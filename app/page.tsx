@@ -115,6 +115,8 @@ const faqs = [
   },
 ];
 
+const packMinutes = (pack: CreditPack) => pack.minutes;
+
 export default function LandingPage() {
   const [packs, setPacks] = useState<CreditPack[]>([]);
 

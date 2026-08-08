@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, CreditPack, Transaction } from '@/lib/supabase';
 import { DashboardShell } from '@/components/dashboard-shell';
@@ -15,6 +16,8 @@ export default function BillingPage() {
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [purchasing, setPurchasing] = useState<string | null>(null);
+  const searchParams = useSearchParams();
+  const router = useRouter();
 
   useEffect(() => {
     supabase
@@ -33,10 +36,45 @@ export default function BillingPage() {
     }
   }, [profile]);
 
+  useEffect(() => {
+    const status = searchParams.get('status');
+    if (status === 'success') {
+      toast.success('Payment successful! Your credits have been updated.');
+      router.replace('/dashboard/billing');
+    }
+  }, [router, searchParams]);
+
   const buyPack = async (pack: CreditPack, gateway: 'paystack' | 'stripe') => {
     if (!profile) return;
     setPurchasing(pack.id + gateway);
-    // Mock payment: in production this redirects to Paystack/Stripe checkout
+
+    if (gateway === 'paystack') {
+      const response = await fetch('/api/paystack/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          packId: pack.id,
+          amount: pack.price_ngn,
+          userId: profile.id,
+          email: profile.email,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data.authorization_url) {
+        toast.error(data.error || data.message || 'Paystack checkout failed.');
+        setPurchasing(null);
+        return;
+      }
+
+      window.location.assign(data.authorization_url);
+      return;
+    }
+
+    // Stripe payment remains mocked for now.
     await new Promise((r) => setTimeout(r, 1200));
 
     const { error } = await supabase.from('transactions').insert({

@@ -22,9 +22,9 @@ import { cn } from '@/lib/utils';
 const navItems = [
   { href: '/admin', label: 'Overview', icon: LayoutDashboard },
   { href: '/admin/users', label: 'Users', icon: Users },
-  { href: '/admin/payments', label: 'Payments', icon: CreditCard },
+  { href: '/admin/payments', label: 'Deposits', icon: CreditCard },
   { href: '/admin/packs', label: 'Credit Packs', icon: Package },
-  { href: '/admin/sessions', label: 'Sessions', icon: Clock },
+  { href: '/admin/sessions', label: 'Usage', icon: Clock },
   { href: '/admin/tutorials', label: 'Tutorials', icon: BookOpen },
   { href: '/admin/settings', label: 'Settings', icon: Settings },
 ];

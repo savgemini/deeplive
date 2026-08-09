@@ -22,8 +22,8 @@ export default function AdminSessions() {
   return (
     <AdminShell>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Sessions / Usage Logs</h1>
-        <p className="mt-1 text-muted-foreground">All LiveCam sessions across the platform.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Usage</h1>
+        <p className="mt-1 text-muted-foreground">All LiveCam session usage and credit consumption across the platform.</p>
       </div>
 
       <Card>

@@ -34,8 +34,8 @@ export default function AdminPayments() {
   return (
     <AdminShell>
       <div className="mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">Payments & Transactions</h1>
-        <p className="mt-1 text-muted-foreground">All payment records across gateways.</p>
+        <h1 className="text-3xl font-bold tracking-tight">Deposits</h1>
+        <p className="mt-1 text-muted-foreground">All successful and pending deposits across gateways.</p>
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">

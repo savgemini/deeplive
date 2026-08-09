@@ -17,12 +17,14 @@ import {
 import { toast } from 'sonner';
 import { Search, Ban, CheckCircle, Plus, Minus, Trash2, Eye } from 'lucide-react';
 
+const CREDITS_PER_MINUTE = 125;
+
 export default function AdminUsers() {
   const [users, setUsers] = useState<Profile[]>([]);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const [selected, setSelected] = useState<Profile | null>(null);
-  const [creditAmount, setCreditAmount] = useState(50);
+  const [minuteAmount, setMinuteAmount] = useState(10);
   const pageSize = 20;
 
   useEffect(() => {
@@ -55,8 +57,9 @@ export default function AdminUsers() {
     toast.success(user.banned ? 'User unbanned' : 'User banned');
   };
 
-  const adjustCredits = async (user: Profile, amount: number) => {
-    const newBalance = Math.max(0, user.credits_balance + amount);
+  const adjustCredits = async (user: Profile, minutes: number) => {
+    const creditsDelta = Math.round(minutes * CREDITS_PER_MINUTE);
+    const newBalance = Math.max(0, user.credits_balance + creditsDelta);
     const { error } = await supabase
       .from('profiles')
       .update({ credits_balance: newBalance })
@@ -71,7 +74,9 @@ export default function AdminUsers() {
     setSelected((prev) =>
       prev?.id === user.id ? { ...prev, credits_balance: newBalance } : prev
     );
-    toast.success(`${amount > 0 ? 'Added' : 'Removed'} ${Math.abs(amount)} credits`);
+    toast.success(
+      `${minutes > 0 ? 'Added' : 'Removed'} ${Math.abs(minutes)} minutes (${Math.abs(creditsDelta)} credits)`
+    );
   };
 
   const deleteUser = async (user: Profile) => {
@@ -174,30 +179,47 @@ export default function AdminUsers() {
                                     <p className="font-medium">{u.credits_balance}</p>
                                   </div>
                                   <div>
+                                    <p className="text-muted-foreground">Minutes</p>
+                                    <p className="font-medium">{Math.floor(u.credits_balance / CREDITS_PER_MINUTE)} min</p>
+                                  </div>
+                                  <div>
                                     <p className="text-muted-foreground">Referral</p>
                                     <p className="font-medium">{u.referral_code ?? '—'}</p>
                                   </div>
+                                  <div>
+                                    <p className="text-muted-foreground">Rate</p>
+                                    <p className="font-medium">{CREDITS_PER_MINUTE} credits / min</p>
+                                  </div>
                                 </div>
-                                <div className="flex items-center gap-2 border-t border-border pt-4">
-                                  <Input
-                                    type="number"
-                                    value={creditAmount}
-                                    onChange={(e) => setCreditAmount(Number(e.target.value))}
-                                    className="w-24"
-                                  />
-                                  <Button
-                                    size="sm"
-                                    onClick={() => adjustCredits(u, creditAmount)}
-                                  >
-                                    <Plus className="mr-1 h-3.5 w-3.5" /> Add
-                                  </Button>
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    onClick={() => adjustCredits(u, -creditAmount)}
-                                  >
-                                    <Minus className="mr-1 h-3.5 w-3.5" /> Remove
-                                  </Button>
+                                <div className="space-y-2 border-t border-border pt-4">
+                                  <div className="flex items-center gap-2">
+                                    <Input
+                                      type="number"
+                                      min={0}
+                                      value={minuteAmount}
+                                      onChange={(e) => setMinuteAmount(Number(e.target.value) || 0)}
+                                      className="w-28"
+                                    />
+                                    <span className="text-sm text-muted-foreground">minutes</span>
+                                  </div>
+                                  <p className="text-xs text-muted-foreground">
+                                    {Math.abs(minuteAmount * CREDITS_PER_MINUTE)} credits = {Math.abs(minuteAmount)} minutes
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      onClick={() => adjustCredits(u, minuteAmount)}
+                                    >
+                                      <Plus className="mr-1 h-3.5 w-3.5" /> Add minutes
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => adjustCredits(u, -minuteAmount)}
+                                    >
+                                      <Minus className="mr-1 h-3.5 w-3.5" /> Remove minutes
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div className="flex gap-2 border-t border-border pt-4">
                                   <Button

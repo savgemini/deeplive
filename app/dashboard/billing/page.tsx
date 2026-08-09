@@ -38,17 +38,86 @@ export default function BillingPage() {
 
   useEffect(() => {
     const status = searchParams.get('status');
-    if (status === 'success') {
-      toast.success('Payment successful! Your credits have been updated.');
+    const reference = searchParams.get('reference');
+
+    if (status === 'success' && reference && profile) {
+      const completePaystackSuccess = async () => {
+        const response = await fetch(`/api/paystack/verify?reference=${encodeURIComponent(reference)}`);
+        const data = await response.json();
+
+        if (!response.ok || !data.success) {
+          toast.error(data.error || 'Paystack verification failed.');
+          return;
+        }
+
+        const { data: existingTx, error: txError } = await supabase
+          .from('transactions')
+          .select('*')
+          .eq('reference', reference)
+          .maybeSingle();
+
+        if (txError) {
+          toast.error('Unable to update transaction record.');
+          return;
+        }
+
+        if (!existingTx) {
+          toast.error('Payment was completed but the transaction record was not found.');
+          return;
+        }
+
+        const { error: updateTxError } = await supabase
+          .from('transactions')
+          .update({ status: 'success' })
+          .eq('reference', reference);
+
+        if (updateTxError) {
+          toast.error('Unable to finalize the payment record.');
+          return;
+        }
+
+        const { error: updateProfileError } = await supabase
+          .from('profiles')
+          .update({ credits_balance: (profile.credits_balance ?? 0) + existingTx.credits_added })
+          .eq('id', profile.id);
+
+        if (updateProfileError) {
+          toast.error('Payment succeeded but credits were not added.');
+          return;
+        }
+
+        refreshProfile();
+        toast.success('Payment successful! Your credits have been added.');
+      };
+
+      completePaystackSuccess();
       router.replace('/dashboard/billing');
     }
-  }, [router, searchParams]);
+  }, [profile, refreshProfile, router, searchParams]);
 
   const buyPack = async (pack: CreditPack, gateway: 'paystack' | 'stripe') => {
     if (!profile) return;
     setPurchasing(pack.id + gateway);
 
     if (gateway === 'paystack') {
+      const reference = `paystack_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { error: txError } = await supabase.from('transactions').insert({
+        user_id: profile.id,
+        pack_id: pack.id,
+        gateway,
+        amount_usd: pack.price_usd,
+        amount_ngn: pack.price_ngn,
+        credits_added: pack.credits,
+        status: 'pending',
+        reference,
+      });
+
+      if (txError) {
+        toast.error('Unable to start payment: ' + txError.message);
+        setPurchasing(null);
+        return;
+      }
+
       const response = await fetch('/api/paystack/checkout', {
         method: 'POST',
         headers: {
@@ -59,6 +128,7 @@ export default function BillingPage() {
           amount: pack.price_ngn,
           userId: profile.id,
           email: profile.email,
+          reference,
         }),
       });
 

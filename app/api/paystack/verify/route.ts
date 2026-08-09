@@ -12,11 +12,19 @@ export async function GET(req: Request) {
     }
 
     const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const serviceRoleKey =
+      process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !serviceRoleKey) {
       return NextResponse.json(
-        { error: 'Server not configured for Paystack verification' },
+        {
+          error:
+            'Server not configured for Paystack verification. Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY in Vercel, then redeploy.',
+          missing: {
+            NEXT_PUBLIC_SUPABASE_URL: !supabaseUrl,
+            SUPABASE_SERVICE_ROLE_KEY: !process.env.SUPABASE_SERVICE_ROLE_KEY,
+          },
+        },
         { status: 500 }
       );
     }

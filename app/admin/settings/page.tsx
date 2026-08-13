@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 import { Save } from 'lucide-react';
 
@@ -37,8 +38,16 @@ export default function AdminSettings() {
         referral_commission_percent: settings.referral_commission_percent,
         paystack_public_key: settings.paystack_public_key,
         paystack_secret_key: settings.paystack_secret_key,
-        stripe_public_key: settings.stripe_public_key,
-        stripe_secret_key: settings.stripe_secret_key,        decart_api_key: settings.decart_api_key,        updated_at: new Date().toISOString(),
+        vpay_public_key: settings.vpay_public_key,
+        vpay_secret_key: settings.vpay_secret_key,
+        manual_payment_bank_name: settings.manual_payment_bank_name,
+        manual_payment_account_name: settings.manual_payment_account_name,
+        manual_payment_account_number: settings.manual_payment_account_number,
+        manual_payment_wallet_name: settings.manual_payment_wallet_name,
+        manual_payment_wallet_number: settings.manual_payment_wallet_number,
+        manual_payment_instructions: settings.manual_payment_instructions,
+        decart_api_key: settings.decart_api_key,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', 1);
     setSaving(false);
@@ -114,12 +123,36 @@ export default function AdminSettings() {
               <Input type="password" value={settings.paystack_secret_key ?? ''} onChange={(e) => setSettings({ ...settings, paystack_secret_key: e.target.value })} placeholder="sk_test_…" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Stripe Public Key</Label>
-              <Input value={settings.stripe_public_key ?? ''} onChange={(e) => setSettings({ ...settings, stripe_public_key: e.target.value })} placeholder="pk_live_…" />
+              <Label className="text-xs">Vpay Public Key</Label>
+              <Input value={settings.vpay_public_key ?? ''} onChange={(e) => setSettings({ ...settings, vpay_public_key: e.target.value })} placeholder="pk_live_…" />
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Stripe Secret Key</Label>
-              <Input type="password" value={settings.stripe_secret_key ?? ''} onChange={(e) => setSettings({ ...settings, stripe_secret_key: e.target.value })} placeholder="sk_live_…" />
+              <Label className="text-xs">Vpay Secret Key</Label>
+              <Input type="password" value={settings.vpay_secret_key ?? ''} onChange={(e) => setSettings({ ...settings, vpay_secret_key: e.target.value })} placeholder="sk_live_…" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Bank Name</Label>
+              <Input value={settings.manual_payment_bank_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_bank_name: e.target.value })} placeholder="Access Bank" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Account Name</Label>
+              <Input value={settings.manual_payment_account_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_account_name: e.target.value })} placeholder="DeepLive Ltd" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Account Number</Label>
+              <Input value={settings.manual_payment_account_number ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_account_number: e.target.value })} placeholder="0123456789" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Wallet Name</Label>
+              <Input value={settings.manual_payment_wallet_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_wallet_name: e.target.value })} placeholder="Vpay / Flutterwave / MoMo" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Wallet Number</Label>
+              <Input value={settings.manual_payment_wallet_number ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_wallet_number: e.target.value })} placeholder="+234..." />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Manual Payment Instructions</Label>
+              <Textarea value={settings.manual_payment_instructions ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_instructions: e.target.value })} placeholder="Tell users what to send, which reference to include, or how to complete the transfer." className="min-h-[90px]" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Decart API Key</Label>

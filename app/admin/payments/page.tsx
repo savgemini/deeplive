@@ -8,20 +8,73 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function AdminPayments() {
   const [txns, setTxns] = useState<Transaction[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'success' | 'failed' | 'pending'>('all');
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  useEffect(() => {
-    supabase
+  const loadTxns = async () => {
+    const { data } = await supabase
       .from('transactions')
       .select('*')
       .order('created_at', { ascending: false })
-      .limit(100)
-      .then(({ data }) => setTxns((data as Transaction[]) ?? []));
+      .limit(100);
+    setTxns((data as Transaction[]) ?? []);
+  };
+
+  useEffect(() => {
+    loadTxns();
   }, []);
+
+  const handleDecision = async (transaction: Transaction, decision: 'success' | 'failed') => {
+    if (!transaction.id) return;
+    setUpdatingId(transaction.id);
+
+    try {
+      const { error } = await supabase
+        .from('transactions')
+        .update({ status: decision })
+        .eq('id', transaction.id);
+
+      if (error) {
+        toast.error('Could not update payment status.');
+        return;
+      }
+
+      if (decision === 'success') {
+        const { data: profile, error: profileFetchError } = await supabase
+          .from('profiles')
+          .select('credits_balance')
+          .eq('id', transaction.user_id)
+          .maybeSingle();
+
+        if (profileFetchError) {
+          toast.error('Payment approved but the user balance could not be loaded.');
+          return;
+        }
+
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .update({
+            credits_balance: (profile?.credits_balance ?? 0) + transaction.credits_added,
+          })
+          .eq('id', transaction.user_id);
+
+        if (profileError) {
+          toast.error('Payment approved but credits were not added.');
+          return;
+        }
+      }
+
+      toast.success(`Payment marked as ${decision}.`);
+      await loadTxns();
+    } finally {
+      setUpdatingId(null);
+    }
+  };
 
   const filtered = txns.filter((t) => {
     const matchesSearch =
@@ -73,13 +126,15 @@ export default function AdminPayments() {
                   <th className="pb-3 pr-4 font-medium">Gateway</th>
                   <th className="pb-3 pr-4 font-medium">Amount</th>
                   <th className="pb-3 pr-4 font-medium">Credits</th>
+                  <th className="pb-3 pr-4 font-medium">Proof</th>
                   <th className="pb-3 pr-4 font-medium">Status</th>
+                  <th className="pb-3 pr-4 font-medium">Actions</th>
                   <th className="pb-3 font-medium">Date</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((t) => (
-                  <tr key={t.id} className="border-b border-border/50">
+                  <tr key={t.id} className="border-b border-border/50 align-top">
                     <td className="py-3 pr-4 font-mono text-xs">
                       {t.reference ?? t.id.slice(0, 8)}
                     </td>
@@ -94,6 +149,15 @@ export default function AdminPayments() {
                     </td>
                     <td className="py-3 pr-4">{t.credits_added}</td>
                     <td className="py-3 pr-4">
+                      {t.proof_url ? (
+                        <a href={t.proof_url} target="_blank" rel="noreferrer" className="text-primary underline">
+                          View proof
+                        </a>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="py-3 pr-4">
                       <Badge
                         variant={
                           t.status === 'success'
@@ -106,6 +170,27 @@ export default function AdminPayments() {
                         {t.status}
                       </Badge>
                     </td>
+                    <td className="py-3 pr-4">
+                      {t.status === 'pending' && (
+                        <div className="flex gap-2">
+                          <Button
+                            size="sm"
+                            onClick={() => handleDecision(t, 'success')}
+                            disabled={updatingId === t.id}
+                          >
+                            Approve
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => handleDecision(t, 'failed')}
+                            disabled={updatingId === t.id}
+                          >
+                            Decline
+                          </Button>
+                        </div>
+                      )}
+                    </td>
                     <td className="py-3 text-xs text-muted-foreground">
                       {new Date(t.created_at).toLocaleString()}
                     </td>
@@ -113,7 +198,7 @@ export default function AdminPayments() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={8} className="py-8 text-center text-muted-foreground">
                       No transactions found.
                     </td>
                   </tr>

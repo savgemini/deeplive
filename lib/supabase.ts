@@ -52,6 +52,8 @@ export type Transaction = {
   credits_added: number;
   status: 'pending' | 'success' | 'failed';
   reference: string | null;
+  proof_url: string | null;
+  payment_note: string | null;
   created_at: string;
 };
 
@@ -89,8 +91,14 @@ export type SiteSettings = {
   referral_commission_percent: number;
   paystack_public_key: string | null;
   paystack_secret_key: string | null;
-  stripe_public_key: string | null;
-  stripe_secret_key: string | null;
+  vpay_public_key: string | null;
+  vpay_secret_key: string | null;
+  manual_payment_bank_name: string | null;
+  manual_payment_account_name: string | null;
+  manual_payment_account_number: string | null;
+  manual_payment_wallet_name: string | null;
+  manual_payment_wallet_number: string | null;
+  manual_payment_instructions: string | null;
   decart_api_key: string | null;
   updated_at: string;
 };

@@ -28,30 +28,37 @@ export default function AdminSettings() {
   const save = async () => {
     if (!settings) return;
     setSaving(true);
-    const { error } = await supabase
-      .from('settings')
-      .update({
-        site_name: settings.site_name,
-        free_trial_seconds: settings.free_trial_seconds,
-        watermark_text: settings.watermark_text,
-        maintenance_mode: settings.maintenance_mode,
-        referral_commission_percent: settings.referral_commission_percent,
-        paystack_public_key: settings.paystack_public_key,
-        paystack_secret_key: settings.paystack_secret_key,
-        vpay_public_key: settings.vpay_public_key,
-        vpay_secret_key: settings.vpay_secret_key,
-        manual_payment_bank_name: settings.manual_payment_bank_name,
-        manual_payment_account_name: settings.manual_payment_account_name,
-        manual_payment_account_number: settings.manual_payment_account_number,
-        manual_payment_wallet_name: settings.manual_payment_wallet_name,
-        manual_payment_wallet_number: settings.manual_payment_wallet_number,
-        manual_payment_instructions: settings.manual_payment_instructions,
-        decart_api_key: settings.decart_api_key,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', 1);
+
+    const payload = {
+      id: 1,
+      site_name: settings.site_name,
+      free_trial_seconds: settings.free_trial_seconds,
+      watermark_text: settings.watermark_text,
+      maintenance_mode: settings.maintenance_mode,
+      referral_commission_percent: settings.referral_commission_percent,
+      paystack_public_key: settings.paystack_public_key,
+      paystack_secret_key: settings.paystack_secret_key,
+      vpay_public_key: settings.vpay_public_key,
+      vpay_secret_key: settings.vpay_secret_key,
+      manual_payment_bank_name: settings.manual_payment_bank_name,
+      manual_payment_account_name: settings.manual_payment_account_name,
+      manual_payment_account_number: settings.manual_payment_account_number,
+      manual_payment_wallet_name: settings.manual_payment_wallet_name,
+      manual_payment_wallet_number: settings.manual_payment_wallet_number,
+      manual_payment_instructions: settings.manual_payment_instructions,
+      decart_api_key: settings.decart_api_key,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
     setSaving(false);
-    if (error) { toast.error('Failed to save settings'); return; }
+
+    if (error) {
+      console.error('Failed to save settings:', error);
+      toast.error(error.message || 'Failed to save settings');
+      return;
+    }
+
     toast.success('Settings saved');
   };
 

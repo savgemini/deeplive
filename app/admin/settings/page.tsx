@@ -40,12 +40,6 @@ export default function AdminSettings() {
       paystack_secret_key: settings.paystack_secret_key,
       vpay_public_key: settings.vpay_public_key,
       vpay_secret_key: settings.vpay_secret_key,
-      manual_payment_bank_name: settings.manual_payment_bank_name,
-      manual_payment_account_name: settings.manual_payment_account_name,
-      manual_payment_account_number: settings.manual_payment_account_number,
-      manual_payment_wallet_name: settings.manual_payment_wallet_name,
-      manual_payment_wallet_number: settings.manual_payment_wallet_number,
-      manual_payment_instructions: settings.manual_payment_instructions,
       decart_api_key: settings.decart_api_key,
       updated_at: new Date().toISOString(),
     };
@@ -136,30 +130,6 @@ export default function AdminSettings() {
             <div className="space-y-1.5">
               <Label className="text-xs">Vpay Secret Key</Label>
               <Input type="password" value={settings.vpay_secret_key ?? ''} onChange={(e) => setSettings({ ...settings, vpay_secret_key: e.target.value })} placeholder="sk_live_…" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Bank Name</Label>
-              <Input value={settings.manual_payment_bank_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_bank_name: e.target.value })} placeholder="Access Bank" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Account Name</Label>
-              <Input value={settings.manual_payment_account_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_account_name: e.target.value })} placeholder="DeepLive Ltd" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Account Number</Label>
-              <Input value={settings.manual_payment_account_number ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_account_number: e.target.value })} placeholder="0123456789" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Wallet Name</Label>
-              <Input value={settings.manual_payment_wallet_name ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_wallet_name: e.target.value })} placeholder="Vpay / Flutterwave / MoMo" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Wallet Number</Label>
-              <Input value={settings.manual_payment_wallet_number ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_wallet_number: e.target.value })} placeholder="+234..." />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Manual Payment Instructions</Label>
-              <Textarea value={settings.manual_payment_instructions ?? ''} onChange={(e) => setSettings({ ...settings, manual_payment_instructions: e.target.value })} placeholder="Tell users what to send, which reference to include, or how to complete the transfer." className="min-h-[90px]" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Decart API Key</Label>

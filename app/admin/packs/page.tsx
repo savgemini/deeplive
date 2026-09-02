@@ -61,7 +61,13 @@ export default function AdminPacks() {
       .from('credit_packs')
       .select('*')
       .order('sort_order', { ascending: true })
-      .then(({ data }) => setPacks((data as CreditPack[]) ?? []));
+      .then(({ data, error }) => {
+        if (error) {
+          toast.error(`Unable to load credit packs: ${error.message}`);
+          return;
+        }
+        setPacks((data as CreditPack[]) ?? []);
+      });
   };
 
   useEffect(() => { load(); }, []);

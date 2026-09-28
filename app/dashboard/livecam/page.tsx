@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
+import { CREDITS_PER_MINUTE, formatSessionDuration, getBillableMinutes } from '@/lib/session-usage';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -41,6 +42,14 @@ const PRESETS = [
 ];
 
 type ConnectionState = 'idle' | 'connecting' | 'connected' | 'generating' | 'disconnected' | 'reconnecting' | 'error';
+type ActiveSession = {
+  id: string;
+  startedAt: number;
+  chargedCredits: number;
+  chargedMinutes: number;
+  stopping: boolean;
+  chargePromise: Promise<{ chargedCredits: number; balanceAfter: number } | null> | null;
+};
 
 export default function LiveCamPage() {
   const router = useRouter();
@@ -49,7 +58,7 @@ export default function LiveCamPage() {
   const cameraVideoRef = useRef<HTMLVideoElement>(null);
   const outputVideoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const sessionRef = useRef<{ id: string; startedAt: number } | null>(null);
+  const sessionRef = useRef<ActiveSession | null>(null);
   const realtimeClientRef = useRef<{
     disconnect: () => void;
     setPrompt: (p: string, opts?: { enhance?: boolean }) => Promise<void>;
@@ -72,8 +81,7 @@ export default function LiveCamPage() {
   const [referencePreview, setReferencePreview] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sessionSummaryOpen, setSessionSummaryOpen] = useState(false);
-  const CREDITS_PER_MINUTE = 125;
-  const [sessionSummary, setSessionSummary] = useState({ creditsUsed: 0, minutesUsed: 0, balanceAfter: 0 });
+  const [sessionSummary, setSessionSummary] = useState({ durationSeconds: 0, creditsUsed: 0, minutesUsed: 0, balanceAfter: 0 });
 
   useEffect(() => {
     navigator.mediaDevices?.enumerateDevices()
@@ -229,7 +237,14 @@ export default function LiveCamPage() {
         .single();
 
       if (data) {
-        sessionRef.current = { id: data.id, startedAt: Date.now() };
+        sessionRef.current = {
+          id: data.id,
+          startedAt: Date.now(),
+          chargedCredits: 0,
+          chargedMinutes: 0,
+          stopping: false,
+          chargePromise: null,
+        };
       }
       setElapsed(0);
       setActive(true);
@@ -244,6 +259,9 @@ export default function LiveCamPage() {
   };
 
   const stopSession = async () => {
+    const session = sessionRef.current;
+    if (session?.stopping) return;
+    if (session) session.stopping = true;
     setActive(false);
     setConnState('disconnected');
 
@@ -260,24 +278,32 @@ export default function LiveCamPage() {
       outputVideoRef.current.srcObject = null;
     }
 
-    if (sessionRef.current && profile) {
-      const usedMinutes = Math.ceil(elapsed / 60);
-      const creditsUsed = usedMinutes * CREDITS_PER_MINUTE;
-      const balanceAfter = Math.max(0, profile.credits_balance - creditsUsed);
-      setSessionSummary({
-        creditsUsed,
-        minutesUsed: usedMinutes,
-        balanceAfter,
-      });
+    if (session && profile) {
+      const durationSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
+      const minutesUsed = getBillableMinutes(durationSeconds);
+      const targetCredits = minutesUsed * CREDITS_PER_MINUTE;
+
+      while (session.chargePromise) await session.chargePromise;
+      const finalCharge = await chargeSessionCredits(session, targetCredits);
+      const { data: latestProfile } = await supabase
+        .from('profiles')
+        .select('credits_balance')
+        .eq('id', profile.id)
+        .maybeSingle();
+      const balanceAfter = latestProfile?.credits_balance ?? finalCharge?.balanceAfter ?? profile.credits_balance;
+      const creditsUsed = session.chargedCredits;
+
+      setElapsed(durationSeconds);
+      setSessionSummary({ durationSeconds, creditsUsed, minutesUsed, balanceAfter });
       setSessionSummaryOpen(true);
       await supabase
         .from('sessions')
         .update({
-          duration_seconds: elapsed,
+          duration_seconds: durationSeconds,
           credits_used: creditsUsed,
           ended_at: new Date().toISOString(),
         })
-        .eq('id', sessionRef.current.id);
+        .eq('id', session.id);
       sessionRef.current = null;
     }
     setElapsed(0);
@@ -354,26 +380,75 @@ export default function LiveCamPage() {
   };
 
   useEffect(() => {
-    if (!active) return;
+    if (!active || !profile) return;
     const interval = setInterval(async () => {
-      setElapsed((e) => {
-        const next = e + 1;
-        if (next % 60 === 0 && profile) {
-          supabase
-            .from('profiles')
-            .update({ credits_balance: Math.max(0, profile.credits_balance - CREDITS_PER_MINUTE) })
-            .eq('id', profile.id)
-            .then(() => refreshProfile());
-        }
-        if (profile && profile.credits_balance <= 0 && next > 0) {
-          stopSession();
-        }
-        return next;
-      });
+      const session = sessionRef.current;
+      if (!session) return;
+
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
+      setElapsed(elapsedSeconds);
+      const completedMinutes = Math.floor(elapsedSeconds / 60);
+      if (completedMinutes <= session.chargedMinutes || session.chargePromise) return;
+
+      const charge = await chargeSessionCredits(session, completedMinutes * CREDITS_PER_MINUTE);
+      if (!charge) {
+        await stopSession();
+        return;
+      }
+
+      session.chargedMinutes = completedMinutes;
+      if (charge.balanceAfter <= 0) await stopSession();
     }, 1000);
     return () => clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, profile]);
+  }, [active, profile?.id]);
+
+  const chargeSessionCredits = async (session: ActiveSession, targetCredits: number) => {
+    while (session.chargePromise) await session.chargePromise;
+    const amountDue = Math.max(0, targetCredits - session.chargedCredits);
+    if (amountDue === 0 || !profile) return null;
+
+    const chargePromise = (async () => {
+      const { data: currentProfile, error: fetchError } = await supabase
+        .from('profiles')
+        .select('credits_balance')
+        .eq('id', profile.id)
+        .maybeSingle();
+
+      if (fetchError || !currentProfile) {
+        toast.error('Unable to load your credit balance.');
+        return null;
+      }
+
+      const chargedCredits = Math.min(amountDue, Math.max(0, currentProfile.credits_balance));
+      const balanceAfter = Math.max(0, currentProfile.credits_balance - chargedCredits);
+      if (chargedCredits > 0) {
+        const { error: updateError } = await supabase
+          .from('profiles')
+          .update({ credits_balance: balanceAfter })
+          .eq('id', profile.id);
+
+        if (updateError) {
+          toast.error('Unable to deduct session credits.');
+          return null;
+        }
+      }
+
+      return { chargedCredits, balanceAfter };
+    })();
+
+    session.chargePromise = chargePromise;
+    try {
+      const result = await chargePromise;
+      if (result) {
+        session.chargedCredits += result.chargedCredits;
+        refreshProfile();
+      }
+      return result;
+    } finally {
+      session.chargePromise = null;
+    }
+  };
 
   useEffect(() => {
     return () => {
@@ -420,11 +495,15 @@ export default function LiveCamPage() {
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-xl border border-border bg-background p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Session Duration</p>
+              <p className="mt-2 text-3xl font-semibold">{formatSessionDuration(sessionSummary.durationSeconds)}</p>
+            </div>
+            <div className="rounded-xl border border-border bg-background p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Credits Used</p>
               <p className="mt-2 text-3xl font-semibold">{sessionSummary.creditsUsed}</p>
             </div>
             <div className="rounded-xl border border-border bg-background p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Minutes Used</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Billable Minutes</p>
               <p className="mt-2 text-3xl font-semibold">{sessionSummary.minutesUsed}</p>
             </div>
             <div className="rounded-xl border border-border bg-background p-4">

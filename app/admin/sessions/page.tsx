@@ -6,17 +6,40 @@ import { AdminShell } from '@/components/admin-shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock } from 'lucide-react';
+import { toast } from 'sonner';
+import { formatSessionDuration, getBillableMinutes } from '@/lib/session-usage';
 
 export default function AdminSessions() {
-  const [sessions, setSessions] = useState<SessionLog[]>([]);
+  const [sessions, setSessions] = useState<(SessionLog & { user_email: string | null })[]>([]);
 
   useEffect(() => {
-    supabase
-      .from('sessions')
-      .select('*')
-      .order('started_at', { ascending: false })
-      .limit(100)
-      .then(({ data }) => setSessions((data as SessionLog[]) ?? []));
+    const loadSessions = async () => {
+      const { data, error } = await supabase
+        .from('sessions')
+        .select('*')
+        .order('started_at', { ascending: false })
+        .limit(100);
+
+      if (error) {
+        toast.error('Unable to load sessions.');
+        return;
+      }
+
+      const sessionRows = (data as SessionLog[]) ?? [];
+      const userIds = Array.from(new Set(sessionRows.map((session) => session.user_id)));
+      const { data: profiles, error: profilesError } = userIds.length
+        ? await supabase.from('profiles').select('id, email').in('id', userIds)
+        : { data: [], error: null };
+
+      if (profilesError) toast.error('Unable to load session user emails.');
+      const emailsByUserId = new Map((profiles ?? []).map((profile) => [profile.id, profile.email]));
+      setSessions(sessionRows.map((session) => ({
+        ...session,
+        user_email: emailsByUserId.get(session.user_id) ?? null,
+      })));
+    };
+
+    loadSessions();
   }, []);
 
   return (
@@ -38,8 +61,9 @@ export default function AdminSessions() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border text-left text-muted-foreground">
-                    <th className="pb-3 pr-4 font-medium">User ID</th>
+                    <th className="pb-3 pr-4 font-medium">User Email</th>
                     <th className="pb-3 pr-4 font-medium">Duration</th>
+                    <th className="pb-3 pr-4 font-medium">Billable Minutes</th>
                     <th className="pb-3 pr-4 font-medium">Credits Used</th>
                     <th className="pb-3 pr-4 font-medium">Quality</th>
                     <th className="pb-3 pr-4 font-medium">Watermark</th>
@@ -49,11 +73,12 @@ export default function AdminSessions() {
                 <tbody>
                   {sessions.map((s) => (
                     <tr key={s.id} className="border-b border-border/50">
-                      <td className="py-3 pr-4 font-mono text-xs">
-                        {s.user_id.slice(0, 8)}…
+                      <td className="py-3 pr-4">{s.user_email ?? 'Unknown user'}</td>
+                      <td className="py-3 pr-4">
+                        {formatSessionDuration(s.duration_seconds)}
                       </td>
                       <td className="py-3 pr-4">
-                        {Math.floor(s.duration_seconds / 60)}m {s.duration_seconds % 60}s
+                        {getBillableMinutes(s.duration_seconds)}
                       </td>
                       <td className="py-3 pr-4 font-medium text-primary">
                         -{s.credits_used}

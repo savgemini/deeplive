@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
-import { supabase, CreditPack, Transaction, SiteSettings } from '@/lib/supabase';
+import { supabase, CreditPack, Transaction, SiteSettings, ManualPaymentMethod } from '@/lib/supabase';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -15,9 +15,10 @@ export default function BillingPage() {
   const { profile, refreshProfile } = useAuth();
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [settings, setSettings] = useState<SiteSettings | null>(null);
+  const [settings, setSettings] = useState<Pick<SiteSettings, 'vpay_enabled' | 'manual_payment_methods'> | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [manualPack, setManualPack] = useState<CreditPack | null>(null);
+  const [manualMethodId, setManualMethodId] = useState<string | null>(null);
   const [manualNote, setManualNote] = useState('');
   const [manualProof, setManualProof] = useState<File | null>(null);
   const [submittingManual, setSubmittingManual] = useState(false);
@@ -33,11 +34,11 @@ export default function BillingPage() {
       .then(({ data }) => setPacks((data as CreditPack[]) ?? []));
 
     supabase
-      .from('settings')
-      .select('*')
+      .from('settings_public')
+      .select('vpay_enabled, manual_payment_methods')
       .eq('id', 1)
       .maybeSingle()
-      .then(({ data }) => setSettings(data as SiteSettings | null));
+      .then(({ data }) => setSettings(data as Pick<SiteSettings, 'vpay_enabled' | 'manual_payment_methods'> | null));
 
     if (profile) {
       supabase
@@ -63,43 +64,13 @@ export default function BillingPage() {
           return;
         }
 
-        const { data: existingTx, error: txError } = await supabase
+        refreshProfile();
+        const { data: updatedTransactions } = await supabase
           .from('transactions')
           .select('*')
-          .eq('reference', reference)
-          .maybeSingle();
-
-        if (txError) {
-          toast.error('Unable to update transaction record.');
-          return;
-        }
-
-        if (!existingTx) {
-          toast.error('Payment was completed but the transaction record was not found.');
-          return;
-        }
-
-        const { error: updateTxError } = await supabase
-          .from('transactions')
-          .update({ status: 'success' })
-          .eq('reference', reference);
-
-        if (updateTxError) {
-          toast.error('Unable to finalize the payment record.');
-          return;
-        }
-
-        const { error: updateProfileError } = await supabase
-          .from('profiles')
-          .update({ credits_balance: (profile.credits_balance ?? 0) + existingTx.credits_added })
-          .eq('id', profile.id);
-
-        if (updateProfileError) {
-          toast.error('Payment succeeded but credits were not added.');
-          return;
-        }
-
-        refreshProfile();
+          .eq('user_id', profile.id)
+          .order('created_at', { ascending: false });
+        setTransactions((updatedTransactions as Transaction[]) ?? []);
         toast.success('Payment successful! Your credits have been added.');
       };
 
@@ -181,6 +152,7 @@ export default function BillingPage() {
         user_id: profile.id,
         pack_id: pack.id,
         gateway,
+        payment_method: null,
         amount_usd: pack.price_usd,
         amount_ngn: pack.price_ngn,
         credits_added: pack.credits,
@@ -199,6 +171,13 @@ export default function BillingPage() {
 
   const submitManualPayment = async () => {
     if (!profile || !manualPack) return;
+    const selectedManualMethod = settings?.manual_payment_methods.find(
+      (method) => method.id === manualMethodId
+    );
+    if (!selectedManualMethod) {
+      toast.error('Please choose an available manual payment method.');
+      return;
+    }
     if (!manualProof) {
       toast.error('Please upload a payment proof before submitting.');
       return;
@@ -214,15 +193,17 @@ export default function BillingPage() {
         reader.readAsDataURL(manualProof);
       });
 
+      const reference = `manual_${Date.now()}`;
       const { error } = await supabase.from('transactions').insert({
         user_id: profile.id,
         pack_id: manualPack.id,
         gateway: 'manual',
+        payment_method: selectedManualMethod.name,
         amount_usd: manualPack.price_usd,
         amount_ngn: manualPack.price_ngn,
         credits_added: manualPack.credits,
         status: 'pending',
-        reference: `manual_${Date.now()}`,
+        reference,
         proof_url: proofDataUrl,
         payment_note: manualNote.trim() || null,
       });
@@ -238,11 +219,12 @@ export default function BillingPage() {
           user_id: profile.id,
           pack_id: manualPack.id,
           gateway: 'manual',
+          payment_method: selectedManualMethod.name,
           amount_usd: manualPack.price_usd,
           amount_ngn: manualPack.price_ngn,
           credits_added: manualPack.credits,
           status: 'pending',
-          reference: `manual_${Date.now()}`,
+          reference,
           proof_url: proofDataUrl,
           payment_note: manualNote.trim() || null,
           created_at: new Date().toISOString(),
@@ -341,20 +323,25 @@ export default function BillingPage() {
                     </>
                   )}
                 </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  disabled={purchasing === pack.id + 'vpay'}
-                  onClick={() => buyPack(pack, 'vpay')}
-                >
-                  {purchasing === pack.id + 'vpay' ? 'Processing…' : 'Pay with Vpay'}
-                </Button>
+                {settings?.vpay_enabled && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="w-full"
+                    disabled={purchasing === pack.id + 'vpay'}
+                    onClick={() => buyPack(pack, 'vpay')}
+                  >
+                    {purchasing === pack.id + 'vpay' ? 'Processing…' : 'Pay with Vpay'}
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="secondary"
                   className="w-full"
-                  onClick={() => setManualPack(pack)}
+                  onClick={() => {
+                    setManualPack(pack);
+                    setManualMethodId(settings?.manual_payment_methods?.[0]?.id ?? null);
+                  }}
                 >
                   <Banknote className="mr-1.5 h-3.5 w-3.5" /> Manual Payment
                 </Button>
@@ -379,29 +366,33 @@ export default function BillingPage() {
               </Button>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              <div className="rounded-lg border border-border p-4">
-                <p className="mb-2 text-sm font-medium text-muted-foreground">Bank transfer</p>
-                <div className="space-y-1 text-sm">
-                  <p><span className="font-medium">Bank:</span> {settings?.manual_payment_bank_name || 'Not set'}</p>
-                  <p><span className="font-medium">Account Name:</span> {settings?.manual_payment_account_name || 'Not set'}</p>
-                  <p><span className="font-medium">Account Number:</span> {settings?.manual_payment_account_number || 'Not set'}</p>
-                </div>
-              </div>
-              <div className="rounded-lg border border-border p-4">
-                <p className="mb-2 text-sm font-medium text-muted-foreground">Wallet transfer</p>
-                <div className="space-y-1 text-sm">
-                  <p><span className="font-medium">Wallet:</span> {settings?.manual_payment_wallet_name || 'Not set'}</p>
-                  <p><span className="font-medium">Number:</span> {settings?.manual_payment_wallet_number || 'Not set'}</p>
-                </div>
-              </div>
+            <div className="grid gap-3 md:grid-cols-2">
+              {(settings?.manual_payment_methods ?? []).map((method: ManualPaymentMethod) => (
+                <button
+                  key={method.id}
+                  type="button"
+                  aria-pressed={manualMethodId === method.id}
+                  onClick={() => setManualMethodId(method.id)}
+                  className={`rounded-md border p-4 text-left ${
+                    manualMethodId === method.id ? 'border-primary bg-primary/5' : 'border-border'
+                  }`}
+                >
+                  <p className="mb-2 text-sm font-semibold">{method.name}</p>
+                  <div className="space-y-1 text-sm">
+                    {method.fields
+                      .filter((field) => field.label?.trim() && field.value?.trim())
+                      .map((field) => (
+                        <p key={field.id} className="break-words">
+                          <span className="font-medium">{field.label}:</span> {field.value}
+                        </p>
+                      ))}
+                  </div>
+                </button>
+              ))}
+              {!settings?.manual_payment_methods?.length && (
+                <p className="text-sm text-muted-foreground">No manual payment methods are currently available.</p>
+              )}
             </div>
-
-            {settings?.manual_payment_instructions && (
-              <div className="rounded-lg border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-                {settings.manual_payment_instructions}
-              </div>
-            )}
 
             <div className="space-y-2">
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-muted/30">
@@ -428,10 +419,10 @@ export default function BillingPage() {
             </div>
 
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setManualPack(null)}>
+              <Button variant="outline" onClick={() => { setManualPack(null); setManualMethodId(null); }}>
                 Cancel
               </Button>
-              <Button onClick={submitManualPayment} disabled={submittingManual || !manualProof}>
+              <Button onClick={submitManualPayment} disabled={submittingManual || !manualProof || !manualMethodId}>
                 {submittingManual ? 'Submitting…' : 'Submit Payment Proof'}
               </Button>
             </div>

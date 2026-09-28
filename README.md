@@ -6,7 +6,7 @@ Real-time AI avatar video call platform. Users buy credit packs (minutes), run L
 
 - **Frontend:** Next.js 13 (App Router) + TypeScript + Tailwind CSS + shadcn/ui
 - **Backend:** Supabase (PostgreSQL, Auth, RLS)
-- **Payments:** Paystack + Stripe (mock flow — ready for real keys)
+- **Payments:** Paystack checkout, plus manual payment review
 - **Charts:** Recharts
 - **Icons:** lucide-react
 
@@ -45,7 +45,7 @@ Admin access is enforced via a `is_admin()` SQL function that checks `profiles.r
 
 ## Getting Started
 
-The dev server runs automatically. Environment variables for Supabase are pre-configured.
+The dev server runs automatically. Environment variables for Supabase are pre-configured. Paystack checkout also requires `PAYSTACK_SECRET_KEY` and `SUPABASE_SERVICE_ROLE_KEY` in the server environment. Never expose the service-role key with a `NEXT_PUBLIC_` variable.
 
 ### Making a user an admin
 
@@ -60,5 +60,5 @@ Then log out and back in. The "Admin Panel" link will appear in the dashboard si
 ## Notes
 
 - The AI transformation in LiveCam is a mock (canvas color overlay + face-tracking placeholder). The architecture is ready to connect a real AI streaming endpoint via WebRTC.
-- Payments are mocked — clicking "Pay with Paystack/Stripe" simulates a successful transaction and credits the account. To go live, add real gateway keys in Admin > Settings and implement the actual checkout redirect.
-- Credits deduct at 1 credit per 60 seconds of active session time.
+- Paystack payments are verified server-side. Successful transactions are approved and credited automatically; manual payments remain pending until an admin approves them.
+- Credit packs store minutes and credits separately. Usage deducts 125 credits per minute, so an 8-minute pack contains 1,000 credits.

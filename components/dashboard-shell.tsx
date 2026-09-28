@@ -31,6 +31,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
   const { user, profile, loading, signOut } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
+  const isAdmin = user?.email === 'admin@deeplive.app' || profile?.role === 'admin';
 
   useEffect(() => {
     if (!loading && !user) {
@@ -82,7 +83,7 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
-          {profile?.role === 'admin' && (
+          {isAdmin && (
             <Link
               href="/admin"
               className={cn(

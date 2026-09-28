@@ -11,18 +11,34 @@ import { Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminPayments() {
-  const [txns, setTxns] = useState<Transaction[]>([]);
+  const [txns, setTxns] = useState<(Transaction & { user_email: string | null })[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'success' | 'failed' | 'pending'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const loadTxns = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('transactions')
       .select('*')
       .order('created_at', { ascending: false })
       .limit(100);
-    setTxns((data as Transaction[]) ?? []);
+    if (error) {
+      toast.error('Unable to load payments.');
+      return;
+    }
+
+    const transactions = (data as Transaction[]) ?? [];
+    const userIds = Array.from(new Set(transactions.map((transaction) => transaction.user_id)));
+    const { data: profiles, error: profilesError } = userIds.length
+      ? await supabase.from('profiles').select('id, email').in('id', userIds)
+      : { data: [], error: null };
+
+    if (profilesError) toast.error('Unable to load payment user emails.');
+    const emails = new Map((profiles ?? []).map((profile) => [profile.id, profile.email]));
+    setTxns(transactions.map((transaction) => ({
+      ...transaction,
+      user_email: emails.get(transaction.user_id) ?? null,
+    })));
   };
 
   useEffect(() => {
@@ -44,31 +60,6 @@ export default function AdminPayments() {
         return;
       }
 
-      if (decision === 'success') {
-        const { data: profile, error: profileFetchError } = await supabase
-          .from('profiles')
-          .select('credits_balance')
-          .eq('id', transaction.user_id)
-          .maybeSingle();
-
-        if (profileFetchError) {
-          toast.error('Payment approved but the user balance could not be loaded.');
-          return;
-        }
-
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .update({
-            credits_balance: (profile?.credits_balance ?? 0) + transaction.credits_added,
-          })
-          .eq('id', transaction.user_id);
-
-        if (profileError) {
-          toast.error('Payment approved but credits were not added.');
-          return;
-        }
-      }
-
       toast.success(`Payment marked as ${decision}.`);
       await loadTxns();
     } finally {
@@ -79,7 +70,8 @@ export default function AdminPayments() {
   const filtered = txns.filter((t) => {
     const matchesSearch =
       t.reference?.toLowerCase().includes(search.toLowerCase()) ||
-      t.gateway.toLowerCase().includes(search.toLowerCase());
+      t.gateway.toLowerCase().includes(search.toLowerCase()) ||
+      t.user_email?.toLowerCase().includes(search.toLowerCase());
     const matchesFilter = filter === 'all' || t.status === filter;
     return matchesSearch && matchesFilter;
   });
@@ -123,7 +115,9 @@ export default function AdminPayments() {
               <thead>
                 <tr className="border-b border-border text-left text-muted-foreground">
                   <th className="pb-3 pr-4 font-medium">Reference</th>
+                  <th className="pb-3 pr-4 font-medium">User Email</th>
                   <th className="pb-3 pr-4 font-medium">Gateway</th>
+                  <th className="pb-3 pr-4 font-medium">Payment Method</th>
                   <th className="pb-3 pr-4 font-medium">Amount</th>
                   <th className="pb-3 pr-4 font-medium">Credits</th>
                   <th className="pb-3 pr-4 font-medium">Proof</th>
@@ -138,7 +132,9 @@ export default function AdminPayments() {
                     <td className="py-3 pr-4 font-mono text-xs">
                       {t.reference ?? t.id.slice(0, 8)}
                     </td>
+                    <td className="py-3 pr-4">{t.user_email ?? 'Unknown user'}</td>
                     <td className="py-3 pr-4 capitalize">{t.gateway}</td>
+                    <td className="py-3 pr-4">{t.payment_method || '—'}</td>
                     <td className="py-3 pr-4">
                       ${t.amount_usd.toFixed(2)}
                       {t.amount_ngn && (
@@ -198,7 +194,7 @@ export default function AdminPayments() {
                 ))}
                 {filtered.length === 0 && (
                   <tr>
-                    <td colSpan={8} className="py-8 text-center text-muted-foreground">
+                    <td colSpan={10} className="py-8 text-center text-muted-foreground">
                       No transactions found.
                     </td>
                   </tr>

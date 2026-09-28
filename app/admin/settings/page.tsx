@@ -9,11 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { toast } from 'sonner';
-import { Plus, Save, Trash2 } from 'lucide-react';
+import { Plus, Save, Trash2, Upload, X } from 'lucide-react';
+
+const MAX_HERO_VIDEO_SIZE_BYTES = 500 * 1024 * 1024;
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
+  const [heroVideoFile, setHeroVideoFile] = useState<File | null>(null);
 
   const updateManualMethod = (methodId: string, updates: Partial<ManualPaymentMethod>) => {
     if (!settings) return;
@@ -50,39 +53,55 @@ export default function AdminSettings() {
     if (!settings) return;
     setSaving(true);
 
-    const payload = {
-      id: 1,
-      site_name: settings.site_name,
-      free_trial_seconds: settings.free_trial_seconds,
-      watermark_text: settings.watermark_text,
-      maintenance_mode: settings.maintenance_mode,
-      referral_commission_percent: settings.referral_commission_percent,
-      paystack_public_key: settings.paystack_public_key,
-      paystack_secret_key: settings.paystack_secret_key,
-      vpay_public_key: settings.vpay_public_key,
-      vpay_secret_key: settings.vpay_secret_key,
-      vpay_enabled: settings.vpay_enabled,
-      manual_payment_methods: settings.manual_payment_methods ?? [],
-      manual_payment_bank_name: settings.manual_payment_bank_name,
-      manual_payment_account_name: settings.manual_payment_account_name,
-      manual_payment_account_number: settings.manual_payment_account_number,
-      manual_payment_wallet_name: settings.manual_payment_wallet_name,
-      manual_payment_wallet_number: settings.manual_payment_wallet_number,
-      manual_payment_instructions: settings.manual_payment_instructions,
-      decart_api_key: settings.decart_api_key,
-      updated_at: new Date().toISOString(),
-    };
+    try {
+      let heroVideoUrl = settings.hero_video_url?.trim() || null;
+      if (heroVideoFile) {
+        const extension = heroVideoFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
+        const path = `${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('site-media')
+          .upload(path, heroVideoFile, { contentType: heroVideoFile.type, upsert: false });
 
-    const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
-    setSaving(false);
+        if (uploadError) throw uploadError;
+        heroVideoUrl = supabase.storage.from('site-media').getPublicUrl(path).data.publicUrl;
+      }
 
-    if (error) {
+      const payload = {
+        id: 1,
+        site_name: settings.site_name,
+        free_trial_seconds: settings.free_trial_seconds,
+        watermark_text: settings.watermark_text,
+        maintenance_mode: settings.maintenance_mode,
+        referral_commission_percent: settings.referral_commission_percent,
+        paystack_public_key: settings.paystack_public_key,
+        paystack_secret_key: settings.paystack_secret_key,
+        vpay_public_key: settings.vpay_public_key,
+        vpay_secret_key: settings.vpay_secret_key,
+        vpay_enabled: settings.vpay_enabled,
+        manual_payment_methods: settings.manual_payment_methods ?? [],
+        manual_payment_bank_name: settings.manual_payment_bank_name,
+        manual_payment_account_name: settings.manual_payment_account_name,
+        manual_payment_account_number: settings.manual_payment_account_number,
+        manual_payment_wallet_name: settings.manual_payment_wallet_name,
+        manual_payment_wallet_number: settings.manual_payment_wallet_number,
+        manual_payment_instructions: settings.manual_payment_instructions,
+        hero_video_url: heroVideoUrl,
+        decart_api_key: settings.decart_api_key,
+        updated_at: new Date().toISOString(),
+      };
+
+      const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
+      if (error) throw error;
+
+      setSettings({ ...settings, hero_video_url: heroVideoUrl });
+      setHeroVideoFile(null);
+      toast.success('Settings saved');
+    } catch (error) {
       console.error('Failed to save settings:', error);
-      toast.error(error.message || 'Failed to save settings');
-      return;
+      toast.error(error instanceof Error ? error.message : 'Failed to save settings');
+    } finally {
+      setSaving(false);
     }
-
-    toast.success('Settings saved');
   };
 
   if (!settings) {
@@ -272,6 +291,63 @@ export default function AdminSettings() {
               <Label className="text-xs">Decart API Key</Label>
               <Input type="password" value={settings.decart_api_key ?? ''} onChange={(e) => setSettings({ ...settings, decart_api_key: e.target.value })} placeholder="decart_…" />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Homepage Hero Video</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <Label className="text-xs">Upload a video</Label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-muted/30">
+                <Upload className="h-4 w-4" />
+                <span>{heroVideoFile ? heroVideoFile.name : 'Choose a video from this device'}</span>
+                <input
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/x-m4v,video/ogg"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (!file) return;
+                    if (!file.type.startsWith('video/')) {
+                      toast.error('Choose a video file.');
+                      event.target.value = '';
+                      return;
+                    }
+                    if (file.size > MAX_HERO_VIDEO_SIZE_BYTES) {
+                      toast.error('Video must be smaller than 500 MB.');
+                      event.target.value = '';
+                      return;
+                    }
+                    setHeroVideoFile(file);
+                    setSettings({ ...settings, hero_video_url: null });
+                  }}
+                />
+              </label>
+              {heroVideoFile && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setHeroVideoFile(null)}>
+                  <X className="mr-1.5 h-4 w-4" /> Remove selected video
+                </Button>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Or enter a direct video URL</Label>
+              <Input
+                value={settings.hero_video_url ?? ''}
+                onChange={(event) => {
+                  setSettings({ ...settings, hero_video_url: event.target.value || null });
+                  if (event.target.value) setHeroVideoFile(null);
+                }}
+                placeholder="https://example.com/hero-video.mp4"
+              />
+            </div>
+            {settings.hero_video_url && (
+              <div className="max-w-xl overflow-hidden rounded-md border border-border bg-black">
+                <video src={settings.hero_video_url} controls playsInline className="aspect-video w-full object-contain" />
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>

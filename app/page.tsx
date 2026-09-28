@@ -119,6 +119,7 @@ const packMinutes = (pack: CreditPack) => pack.minutes;
 
 export default function LandingPage() {
   const [packs, setPacks] = useState<CreditPack[]>([]);
+  const [heroVideoUrl, setHeroVideoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     supabase
@@ -127,6 +128,13 @@ export default function LandingPage() {
       .eq('active', true)
       .order('sort_order', { ascending: true })
       .then(({ data }) => setPacks((data as CreditPack[]) ?? []));
+
+    supabase
+      .from('settings_public')
+      .select('hero_video_url')
+      .eq('id', 1)
+      .maybeSingle()
+      .then(({ data }) => setHeroVideoUrl(data?.hero_video_url ?? null));
   }, []);
 
   return (
@@ -182,11 +190,23 @@ export default function LandingPage() {
 
             <div className="relative animate-fade-up [animation-delay:150ms]">
               <div className="relative overflow-hidden rounded-2xl border border-border glow-primary">
-                <img
-                  src={HERO_IMG}
-                  alt="AI avatar transformation"
-                  className="aspect-video w-full object-cover"
-                />
+                {heroVideoUrl ? (
+                  <video
+                    src={heroVideoUrl}
+                    poster={HERO_IMG}
+                    autoPlay
+                    muted
+                    loop
+                    playsInline
+                    className="aspect-video w-full object-cover"
+                  />
+                ) : (
+                  <img
+                    src={HERO_IMG}
+                    alt="AI avatar transformation"
+                    className="aspect-video w-full object-cover"
+                  />
+                )}
                 <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-transparent to-transparent" />
                 <div className="absolute bottom-4 left-4 flex items-center gap-2">
                   <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive animate-pulse-slow">

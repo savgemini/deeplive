@@ -29,6 +29,8 @@ import {
   WifiOff,
   Camera,
   Wand2,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 const PRESETS = [
@@ -68,6 +70,7 @@ export default function LiveCamPage() {
   const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
   const [selectedCamera, setSelectedCamera] = useState<string>('');
   const [cameraOn, setCameraOn] = useState(false);
+  const [cameraPreviewBlurred, setCameraPreviewBlurred] = useState(false);
   const [loadingCamera, setLoadingCamera] = useState(false);
   const [active, setActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -552,7 +555,9 @@ export default function LiveCamPage() {
                     ref={cameraVideoRef}
                     playsInline
                     muted
-                    className="h-full w-full object-cover"
+                    className={`h-full w-full object-cover transition-[filter,transform] duration-300 ${
+                      cameraPreviewBlurred ? 'scale-105 blur-xl' : ''
+                    }`}
                   />
                   {!cameraOn && (
                     <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
@@ -566,6 +571,18 @@ export default function LiveCamPage() {
                       <span className="text-xs font-medium text-white">CAM</span>
                     </div>
                   )}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    aria-label={cameraPreviewBlurred ? 'Show camera preview' : 'Blur camera preview'}
+                    title={cameraPreviewBlurred ? 'Show camera preview' : 'Blur camera preview'}
+                    aria-pressed={cameraPreviewBlurred}
+                    onClick={() => setCameraPreviewBlurred((blurred) => !blurred)}
+                    className="absolute bottom-3 right-3 z-10 bg-black/60 text-white hover:bg-black/80 hover:text-white"
+                  >
+                    {cameraPreviewBlurred ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

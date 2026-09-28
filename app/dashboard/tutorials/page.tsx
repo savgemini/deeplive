@@ -21,6 +21,9 @@ export default function TutorialsPage() {
   }, []);
 
   const categories = Array.from(new Set(tutorials.map((t) => t.category)));
+  const isDirectVideo = active
+    ? /\.(mp4|webm|mov|m4v|ogg)(?:[?#]|$)/i.test(active.video_url)
+    : false;
 
   return (
     <DashboardShell>
@@ -35,12 +38,16 @@ export default function TutorialsPage() {
         <Card className="mb-6 overflow-hidden">
           <CardContent className="p-0">
             <div className="aspect-video bg-black">
-              <iframe
-                src={active.video_url.replace('watch?v=', 'embed/')}
-                className="h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                allowFullScreen
-              />
+              {isDirectVideo ? (
+                <video src={active.video_url} controls playsInline className="h-full w-full" />
+              ) : (
+                <iframe
+                  src={active.video_url.replace('watch?v=', 'embed/')}
+                  className="h-full w-full"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                  allowFullScreen
+                />
+              )}
             </div>
             <div className="p-4">
               <div className="flex items-center justify-between">

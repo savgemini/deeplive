@@ -18,7 +18,9 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { Plus, Pencil, Trash2, BookOpen } from 'lucide-react';
+import { Plus, Pencil, Trash2, BookOpen, Upload, X } from 'lucide-react';
+
+const MAX_VIDEO_SIZE_BYTES = 500 * 1024 * 1024;
 
 type TForm = {
   title: string;
@@ -45,6 +47,8 @@ export default function AdminTutorials() {
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<Tutorial | null>(null);
   const [form, setForm] = useState<TForm>(empty);
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const load = () => {
     supabase
@@ -56,10 +60,16 @@ export default function AdminTutorials() {
 
   useEffect(() => { load(); }, []);
 
-  const openNew = () => { setEditing(null); setForm(empty); setOpen(true); };
+  const openNew = () => {
+    setEditing(null);
+    setForm(empty);
+    setVideoFile(null);
+    setOpen(true);
+  };
 
   const openEdit = (t: Tutorial) => {
     setEditing(t);
+    setVideoFile(null);
     setForm({
       title: t.title,
       description: t.description ?? '',
@@ -73,17 +83,49 @@ export default function AdminTutorials() {
   };
 
   const save = async () => {
-    if (editing) {
-      const { error } = await supabase.from('tutorials').update(form).eq('id', editing.id);
-      if (error) { toast.error(error.message); return; }
-      toast.success('Tutorial updated');
-    } else {
-      const { error } = await supabase.from('tutorials').insert(form);
-      if (error) { toast.error(error.message); return; }
-      toast.success('Tutorial created');
+    if (!form.title.trim()) {
+      toast.error('Enter a tutorial title.');
+      return;
     }
-    setOpen(false);
-    load();
+    if (!videoFile && !form.video_url.trim()) {
+      toast.error('Choose a video file or enter a video URL.');
+      return;
+    }
+
+    setSaving(true);
+    let uploadedPath: string | null = null;
+    try {
+      let videoUrl = form.video_url.trim();
+      if (videoFile) {
+        const extension = videoFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
+        uploadedPath = `${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('tutorial-videos')
+          .upload(uploadedPath, videoFile, { contentType: videoFile.type, upsert: false });
+
+        if (uploadError) throw uploadError;
+        videoUrl = supabase.storage.from('tutorial-videos').getPublicUrl(uploadedPath).data.publicUrl;
+      }
+
+      const payload = { ...form, video_url: videoUrl };
+      const { error } = editing
+        ? await supabase.from('tutorials').update(payload).eq('id', editing.id)
+        : await supabase.from('tutorials').insert(payload);
+
+      if (error) {
+        if (uploadedPath) await supabase.storage.from('tutorial-videos').remove([uploadedPath]);
+        throw error;
+      }
+
+      toast.success(editing ? 'Tutorial updated' : 'Tutorial created');
+      setOpen(false);
+      setVideoFile(null);
+      load();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to save tutorial.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const del = async (t: Tutorial) => {
@@ -163,9 +205,49 @@ export default function AdminTutorials() {
                 <Input type="number" value={form.duration_minutes} onChange={(e) => setForm({ ...form, duration_minutes: Number(e.target.value) })} />
               </div>
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs">Video URL</Label>
-              <Input value={form.video_url} onChange={(e) => setForm({ ...form, video_url: e.target.value })} placeholder="https://youtube.com/…" />
+            <div className="space-y-2">
+              <Label className="text-xs">Upload Video</Label>
+              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-muted/30">
+                <Upload className="h-4 w-4" />
+                <span>{videoFile ? videoFile.name : 'Choose a video from this device'}</span>
+                <input
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    if (!file) return;
+                    if (!file.type.startsWith('video/')) {
+                      toast.error('Choose a video file.');
+                      event.target.value = '';
+                      return;
+                    }
+                    if (file.size > MAX_VIDEO_SIZE_BYTES) {
+                      toast.error('Video must be smaller than 500 MB.');
+                      event.target.value = '';
+                      return;
+                    }
+                    setVideoFile(file);
+                    setForm({ ...form, video_url: '' });
+                  }}
+                />
+              </label>
+              {videoFile && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setVideoFile(null)}>
+                  <X className="mr-1.5 h-4 w-4" /> Remove selected video
+                </Button>
+              )}
+              <div className="space-y-1.5">
+                <Label className="text-xs">Or use an external video URL</Label>
+                <Input
+                  value={form.video_url}
+                  onChange={(event) => {
+                    setForm({ ...form, video_url: event.target.value });
+                    if (event.target.value) setVideoFile(null);
+                  }}
+                  placeholder="https://youtube.com/…"
+                />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="flex items-center justify-between rounded-lg border border-border p-3">
@@ -180,7 +262,9 @@ export default function AdminTutorials() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-            <Button onClick={save}>{editing ? 'Update' : 'Create'}</Button>
+            <Button onClick={save} disabled={saving}>
+              {saving ? (videoFile ? 'Uploading…' : 'Saving…') : editing ? 'Update' : 'Create'}
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

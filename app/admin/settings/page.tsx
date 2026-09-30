@@ -17,6 +17,7 @@ export default function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [heroVideoFile, setHeroVideoFile] = useState<File | null>(null);
+  const [qrCodeFiles, setQrCodeFiles] = useState<Record<string, File>>({});
   const [heroVideoSettingAvailable, setHeroVideoSettingAvailable] = useState(false);
 
   const updateManualMethod = (methodId: string, updates: Partial<ManualPaymentMethod>) => {
@@ -66,6 +67,7 @@ export default function AdminSettings() {
   const save = async () => {
     if (!settings) return;
     setSaving(true);
+    const uploadedFiles: { bucket: string; path: string }[] = [];
 
     try {
       let heroVideoUrl = settings.hero_video_url?.trim() || null;
@@ -80,7 +82,27 @@ export default function AdminSettings() {
           .upload(path, heroVideoFile, { contentType: heroVideoFile.type, upsert: false });
 
         if (uploadError) throw uploadError;
+        uploadedFiles.push({ bucket: 'site-media', path });
         heroVideoUrl = supabase.storage.from('site-media').getPublicUrl(path).data.publicUrl;
+      }
+
+      let manualPaymentMethods = settings.manual_payment_methods ?? [];
+      for (const method of manualPaymentMethods) {
+        const qrFile = qrCodeFiles[method.id];
+        if (!qrFile) continue;
+
+        const extension = qrFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'png';
+        const path = `${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('payment-method-qrs')
+          .upload(path, qrFile, { contentType: qrFile.type, upsert: false });
+
+        if (uploadError) throw uploadError;
+        uploadedFiles.push({ bucket: 'payment-method-qrs', path });
+        const qrCodeUrl = supabase.storage.from('payment-method-qrs').getPublicUrl(path).data.publicUrl;
+        manualPaymentMethods = manualPaymentMethods.map((item) =>
+          item.id === method.id ? { ...item, qr_code_url: qrCodeUrl } : item
+        );
       }
 
       const payload: Record<string, unknown> = {
@@ -95,7 +117,7 @@ export default function AdminSettings() {
         vpay_public_key: settings.vpay_public_key,
         vpay_secret_key: settings.vpay_secret_key,
         vpay_enabled: settings.vpay_enabled,
-        manual_payment_methods: settings.manual_payment_methods ?? [],
+        manual_payment_methods: manualPaymentMethods,
         manual_payment_bank_name: settings.manual_payment_bank_name,
         manual_payment_account_name: settings.manual_payment_account_name,
         manual_payment_account_number: settings.manual_payment_account_number,
@@ -111,10 +133,14 @@ export default function AdminSettings() {
       const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
       if (error) throw error;
 
-      setSettings({ ...settings, hero_video_url: heroVideoUrl });
+      setSettings({ ...settings, hero_video_url: heroVideoUrl, manual_payment_methods: manualPaymentMethods });
       setHeroVideoFile(null);
+      setQrCodeFiles({});
       toast.success('Settings saved');
     } catch (error) {
+      await Promise.all(
+        uploadedFiles.map(({ bucket, path }) => supabase.storage.from(bucket).remove([path]))
+      );
       console.error('Failed to save settings:', error);
       const message =
         error instanceof Error
@@ -308,6 +334,62 @@ export default function AdminSettings() {
                   >
                     <Plus className="mr-1.5 h-4 w-4" /> Add Field
                   </Button>
+
+                  <div className="space-y-2 border-t border-border pt-3">
+                    <Label className="text-xs">QR Code (optional)</Label>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30">
+                        <Upload className="h-4 w-4" />
+                        <span>
+                          {qrCodeFiles[method.id]?.name ??
+                            (method.qr_code_url ? 'Replace QR code' : 'Upload QR code')}
+                        </span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = '';
+                            if (!file) return;
+                            if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+                              toast.error('QR codes must be PNG, JPEG, or WebP images.');
+                              return;
+                            }
+                            if (file.size > 10 * 1024 * 1024) {
+                              toast.error('QR code images must be smaller than 10 MB.');
+                              return;
+                            }
+                            setQrCodeFiles((current) => ({ ...current, [method.id]: file }));
+                          }}
+                        />
+                      </label>
+                      {(method.qr_code_url || qrCodeFiles[method.id]) && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            updateManualMethod(method.id, { qr_code_url: null });
+                            setQrCodeFiles((current) => {
+                              const next = { ...current };
+                              delete next[method.id];
+                              return next;
+                            });
+                          }}
+                        >
+                          <X className="mr-1 h-4 w-4" /> Remove QR
+                        </Button>
+                      )}
+                    </div>
+                    {method.qr_code_url && (
+                      <img
+                        src={method.qr_code_url}
+                        alt={`${method.name} payment QR code`}
+                        className="h-32 w-32 rounded-md border border-border bg-white object-contain p-2"
+                      />
+                    )}
+                  </div>
                 </div>
               ))}
             </div>

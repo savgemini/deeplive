@@ -74,6 +74,7 @@ export type ManualPaymentMethod = {
   id: string;
   name: string;
   fields: ManualPaymentField[];
+  qr_code_url?: string | null;
 };
 
 export type SessionLog = {

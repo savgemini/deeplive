@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase, CreditPack, Transaction, SiteSettings, ManualPaymentMethod } from '@/lib/supabase';
@@ -8,8 +8,9 @@ import { DashboardShell } from '@/components/dashboard-shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { toast } from 'sonner';
-import { CreditCard, Zap, Check, Banknote, Upload, X } from 'lucide-react';
+import { CreditCard, Zap, Check, Banknote, Upload, Loader2 } from 'lucide-react';
 
 export default function BillingPage() {
   const { profile, refreshProfile } = useAuth();
@@ -18,12 +19,24 @@ export default function BillingPage() {
   const [settings, setSettings] = useState<Pick<SiteSettings, 'vpay_enabled' | 'manual_payment_methods'> | null>(null);
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [manualPack, setManualPack] = useState<CreditPack | null>(null);
+  const [manualDialogOpen, setManualDialogOpen] = useState(false);
+  const [manualStep, setManualStep] = useState<'methods' | 'loading-details' | 'details' | 'complete'>('methods');
   const [manualMethodId, setManualMethodId] = useState<string | null>(null);
   const [manualNote, setManualNote] = useState('');
-  const [manualProof, setManualProof] = useState<File | null>(null);
   const [submittingManual, setSubmittingManual] = useState(false);
+  const manualProofInputRef = useRef<HTMLInputElement>(null);
   const searchParams = useSearchParams();
   const router = useRouter();
+
+  const selectedManualMethod = settings?.manual_payment_methods.find(
+    (method) => method.id === manualMethodId
+  ) ?? null;
+
+  useEffect(() => {
+    if (!manualDialogOpen || manualStep !== 'loading-details') return;
+    const timeout = window.setTimeout(() => setManualStep('details'), 3000);
+    return () => window.clearTimeout(timeout);
+  }, [manualDialogOpen, manualStep]);
 
   useEffect(() => {
     supabase
@@ -169,17 +182,14 @@ export default function BillingPage() {
     setPurchasing(null);
   };
 
-  const submitManualPayment = async () => {
+  const submitManualPayment = async (proofFile: File) => {
     if (!profile || !manualPack) return;
-    const selectedManualMethod = settings?.manual_payment_methods.find(
-      (method) => method.id === manualMethodId
-    );
     if (!selectedManualMethod) {
       toast.error('Please choose an available manual payment method.');
       return;
     }
-    if (!manualProof) {
-      toast.error('Please upload a payment proof before submitting.');
+    if (proofFile.size > 10 * 1024 * 1024) {
+      toast.error('Payment proof must be smaller than 10 MB.');
       return;
     }
 
@@ -190,7 +200,7 @@ export default function BillingPage() {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result));
         reader.onerror = () => reject(new Error('Failed to read payment proof.'));
-        reader.readAsDataURL(manualProof);
+        reader.readAsDataURL(proofFile);
       });
 
       const reference = `manual_${Date.now()}`;
@@ -233,11 +243,22 @@ export default function BillingPage() {
       ]);
 
       toast.success('Manual payment submitted for review.');
-      setManualPack(null);
       setManualNote('');
-      setManualProof(null);
+      setManualStep('complete');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Unable to submit payment proof.');
     } finally {
       setSubmittingManual(false);
+    }
+  };
+
+  const closeManualPayment = (open: boolean) => {
+    setManualDialogOpen(open);
+    if (!open) {
+      setManualPack(null);
+      setManualMethodId(null);
+      setManualNote('');
+      setManualStep('methods');
     }
   };
 
@@ -340,7 +361,9 @@ export default function BillingPage() {
                   className="w-full"
                   onClick={() => {
                     setManualPack(pack);
-                    setManualMethodId(settings?.manual_payment_methods?.[0]?.id ?? null);
+                    setManualDialogOpen(true);
+                    setManualMethodId(null);
+                    setManualStep('methods');
                   }}
                 >
                   <Banknote className="mr-1.5 h-3.5 w-3.5" /> Manual Payment
@@ -351,84 +374,155 @@ export default function BillingPage() {
         ))}
       </div>
 
-      {manualPack && (
-        <Card className="mt-6 border-dashed">
-          <CardContent className="space-y-5 pt-6">
-            <div className="flex items-center justify-between gap-4">
-              <div>
-                <h3 className="text-lg font-semibold">Manual payment for {manualPack.name}</h3>
-                <p className="text-sm text-muted-foreground">
-                  Pay ${manualPack.price_usd.toFixed(2)} (${manualPack.credits} credits) and upload proof below.
-                </p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setManualPack(null)} aria-label="Close manual payment form">
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
+      <Dialog open={manualDialogOpen} onOpenChange={closeManualPayment}>
+        <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {manualStep === 'methods' && 'Choose a payment method'}
+              {manualStep === 'loading-details' && 'Preparing payment details'}
+              {(manualStep === 'details' || manualStep === 'complete') && 'Complete your transfer'}
+            </DialogTitle>
+            {manualPack && (
+              <p className="text-sm text-muted-foreground">
+                {manualPack.name} · ${manualPack.price_usd.toFixed(2)} · {manualPack.credits} credits
+              </p>
+            )}
+          </DialogHeader>
 
-            <div className="grid gap-3 md:grid-cols-2">
-              {(settings?.manual_payment_methods ?? []).map((method: ManualPaymentMethod) => (
-                <button
-                  key={method.id}
-                  type="button"
-                  aria-pressed={manualMethodId === method.id}
-                  onClick={() => setManualMethodId(method.id)}
-                  className={`rounded-md border p-4 text-left ${
-                    manualMethodId === method.id ? 'border-primary bg-primary/5' : 'border-border'
-                  }`}
-                >
-                  <p className="mb-2 text-sm font-semibold">{method.name}</p>
-                  <div className="space-y-1 text-sm">
-                    {method.fields
-                      .filter((field) => field.label?.trim() && field.value?.trim())
-                      .map((field) => (
-                        <p key={field.id} className="break-words">
-                          <span className="font-medium">{field.label}:</span> {field.value}
-                        </p>
-                      ))}
-                  </div>
-                </button>
-              ))}
+          {manualStep === 'methods' && (
+            <div className="space-y-3">
+              {(settings?.manual_payment_methods ?? []).map((method: ManualPaymentMethod) => {
+                const labels = method.fields
+                  .map((field) => field.label.trim())
+                  .filter(Boolean);
+                return (
+                  <button
+                    key={method.id}
+                    type="button"
+                    onClick={() => {
+                      setManualMethodId(method.id);
+                      setManualStep('loading-details');
+                    }}
+                    className="w-full rounded-md border border-border p-4 text-left transition-colors hover:border-primary hover:bg-primary/5"
+                  >
+                    <span className="block font-semibold">{method.name}</span>
+                    {labels.length > 0 && (
+                      <span className="mt-2 block text-sm text-muted-foreground">
+                        {labels.join(' · ')}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
               {!settings?.manual_payment_methods?.length && (
-                <p className="text-sm text-muted-foreground">No manual payment methods are currently available.</p>
+                <p className="py-6 text-center text-sm text-muted-foreground">
+                  No manual payment methods are currently available.
+                </p>
               )}
             </div>
+          )}
 
-            <div className="space-y-2">
-              <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-muted/30">
-                <Upload className="h-4 w-4" />
-                <span>{manualProof ? manualProof.name : 'Upload payment proof'}</span>
-                <input
-                  type="file"
-                  accept="image/*,.pdf"
-                  className="hidden"
-                  onChange={(e) => setManualProof(e.target.files?.[0] ?? null)}
-                />
-              </label>
+          {manualStep === 'loading-details' && (
+            <div role="status" className="flex min-h-48 flex-col items-center justify-center gap-3 text-muted-foreground">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-sm">Loading payment details…</p>
             </div>
+          )}
 
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Payment note (optional)</label>
-              <textarea
-                value={manualNote}
-                onChange={(e) => setManualNote(e.target.value)}
-                rows={3}
-                placeholder="Add a note for the admin, such as the transfer reference or time sent."
-                className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm outline-none ring-0 placeholder:text-muted-foreground focus:border-primary"
-              />
-            </div>
+          {(manualStep === 'details' || manualStep === 'complete') && selectedManualMethod && (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border p-4">
+                <h3 className="font-semibold">{selectedManualMethod.name}</h3>
+                <div className="mt-3 space-y-2 text-sm">
+                  {selectedManualMethod.fields
+                    .filter((field) => field.label.trim() && field.value.trim())
+                    .map((field) => (
+                      <p key={field.id} className="break-words">
+                        <span className="font-medium">{field.label}:</span> {field.value}
+                      </p>
+                    ))}
+                </div>
+                {selectedManualMethod.qr_code_url && (
+                  <div className="mt-4 border-t border-border pt-4">
+                    <p className="mb-2 text-sm font-medium">Scan to pay</p>
+                    <img
+                      src={selectedManualMethod.qr_code_url}
+                      alt={`${selectedManualMethod.name} payment QR code`}
+                      className="mx-auto max-h-64 w-full max-w-64 rounded-md bg-white object-contain p-2"
+                    />
+                  </div>
+                )}
+              </div>
 
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setManualPack(null); setManualMethodId(null); }}>
-                Cancel
-              </Button>
-              <Button onClick={submitManualPayment} disabled={submittingManual || !manualProof || !manualMethodId}>
-                {submittingManual ? 'Submitting…' : 'Submit Payment Proof'}
-              </Button>
+              {manualStep === 'complete' ? (
+                <div role="status" className="flex items-start gap-3 rounded-md border border-emerald-500/30 bg-emerald-500/10 p-4">
+                  <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="font-medium">Proof submitted</p>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      Your transaction is pending until an admin reviews and approves it.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium">Payment note (optional)</label>
+                    <textarea
+                      value={manualNote}
+                      onChange={(event) => setManualNote(event.target.value)}
+                      rows={2}
+                      placeholder="Transfer reference or a note for the admin"
+                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                    />
+                  </div>
+                  <input
+                    ref={manualProofInputRef}
+                    type="file"
+                    accept="image/*,.pdf"
+                    className="hidden"
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = '';
+                      if (!file) return;
+                      void submitManualPayment(file);
+                    }}
+                  />
+                  <DialogFooter className="gap-2 sm:justify-between">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={submittingManual}
+                      onClick={() => {
+                        setManualStep('methods');
+                      }}
+                    >
+                      Back to methods
+                    </Button>
+                    <Button
+                      type="button"
+                      disabled={submittingManual}
+                      onClick={() => manualProofInputRef.current?.click()}
+                    >
+                      {submittingManual ? (
+                        <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading proof…</>
+                      ) : (
+                        <><Upload className="mr-2 h-4 w-4" /> I've made this transfer</>
+                      )}
+                    </Button>
+                  </DialogFooter>
+                </>
+              )}
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+
+          {manualStep === 'complete' && (
+            <DialogFooter>
+              <Button onClick={() => closeManualPayment(false)}>Close</Button>
+            </DialogFooter>
+          )}
+        </DialogContent>
+      </Dialog>
 
       <h2 className="mb-4 mt-10 text-xl font-semibold">Purchase History</h2>
       <Card>

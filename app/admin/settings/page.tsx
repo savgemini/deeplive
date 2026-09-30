@@ -17,6 +17,7 @@ export default function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [heroVideoFile, setHeroVideoFile] = useState<File | null>(null);
+  const [heroVideoSettingAvailable, setHeroVideoSettingAvailable] = useState(false);
 
   const updateManualMethod = (methodId: string, updates: Partial<ManualPaymentMethod>) => {
     if (!settings) return;
@@ -41,12 +42,25 @@ export default function AdminSettings() {
   };
 
   useEffect(() => {
-    supabase
-      .from('settings')
-      .select('*')
-      .eq('id', 1)
-      .maybeSingle()
-      .then(({ data }) => setSettings(data as SiteSettings | null));
+    const loadSettings = async () => {
+      const { data, error } = await supabase
+        .from('settings')
+        .select('*')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error) {
+        toast.error(`Unable to load settings: ${error.message}`);
+        return;
+      }
+
+      if (data) {
+        setHeroVideoSettingAvailable(Object.prototype.hasOwnProperty.call(data, 'hero_video_url'));
+        setSettings(data as SiteSettings);
+      }
+    };
+
+    loadSettings();
   }, []);
 
   const save = async () => {
@@ -55,6 +69,9 @@ export default function AdminSettings() {
 
     try {
       let heroVideoUrl = settings.hero_video_url?.trim() || null;
+      if (heroVideoFile && !heroVideoSettingAvailable) {
+        throw new Error('Apply the homepage hero video Supabase migration before uploading a video.');
+      }
       if (heroVideoFile) {
         const extension = heroVideoFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
         const path = `${crypto.randomUUID()}.${extension}`;
@@ -66,7 +83,7 @@ export default function AdminSettings() {
         heroVideoUrl = supabase.storage.from('site-media').getPublicUrl(path).data.publicUrl;
       }
 
-      const payload = {
+      const payload: Record<string, unknown> = {
         id: 1,
         site_name: settings.site_name,
         free_trial_seconds: settings.free_trial_seconds,
@@ -85,10 +102,11 @@ export default function AdminSettings() {
         manual_payment_wallet_name: settings.manual_payment_wallet_name,
         manual_payment_wallet_number: settings.manual_payment_wallet_number,
         manual_payment_instructions: settings.manual_payment_instructions,
-        hero_video_url: heroVideoUrl,
         decart_api_key: settings.decart_api_key,
         updated_at: new Date().toISOString(),
       };
+
+      if (heroVideoSettingAvailable) payload.hero_video_url = heroVideoUrl;
 
       const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
       if (error) throw error;
@@ -98,7 +116,13 @@ export default function AdminSettings() {
       toast.success('Settings saved');
     } catch (error) {
       console.error('Failed to save settings:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to save settings');
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error !== null && 'message' in error && typeof error.message === 'string'
+            ? error.message
+            : 'Failed to save settings';
+      toast.error(message);
     } finally {
       setSaving(false);
     }
@@ -299,6 +323,11 @@ export default function AdminSettings() {
             <CardTitle className="text-base">Homepage Hero Video</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
+            {!heroVideoSettingAvailable && (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+                Apply migration 20260906000000 in Supabase SQL Editor to enable homepage video editing.
+              </p>
+            )}
             <div className="space-y-2">
               <Label className="text-xs">Upload a video</Label>
               <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground hover:bg-muted/30">
@@ -308,6 +337,7 @@ export default function AdminSettings() {
                   type="file"
                   accept="video/mp4,video/webm,video/quicktime,video/x-m4v,video/ogg"
                   className="hidden"
+                  disabled={!heroVideoSettingAvailable}
                   onChange={(event) => {
                     const file = event.target.files?.[0] ?? null;
                     if (!file) return;
@@ -336,6 +366,7 @@ export default function AdminSettings() {
               <Label className="text-xs">Or enter a direct video URL</Label>
               <Input
                 value={settings.hero_video_url ?? ''}
+                disabled={!heroVideoSettingAvailable}
                 onChange={(event) => {
                   setSettings({ ...settings, hero_video_url: event.target.value || null });
                   if (event.target.value) setHeroVideoFile(null);

@@ -178,14 +178,14 @@ export default function BillingPage() {
       ...prev,
     ]);
 
-    toast.info('Vpay checkout is not configured yet. Please use manual payment for now.');
+    toast.info('Vpay checkout is not configured yet. Please use crypto payment for now.');
     setPurchasing(null);
   };
 
   const submitManualPayment = async (proofFile: File) => {
     if (!profile || !manualPack) return;
     if (!selectedManualMethod) {
-      toast.error('Please choose an available manual payment method.');
+      toast.error('Please choose an available crypto payment method.');
       return;
     }
     if (proofFile.size > 10 * 1024 * 1024) {
@@ -219,7 +219,7 @@ export default function BillingPage() {
       });
 
       if (error) {
-        toast.error('Unable to submit manual payment: ' + error.message);
+        toast.error('Unable to submit crypto payment: ' + error.message);
         return;
       }
 
@@ -242,7 +242,7 @@ export default function BillingPage() {
         ...prev,
       ]);
 
-      toast.success('Manual payment submitted for review.');
+      toast.success('Crypto payment submitted for review.');
       setManualNote('');
       setManualStep('complete');
     } catch (error) {
@@ -366,7 +366,7 @@ export default function BillingPage() {
                     setManualStep('methods');
                   }}
                 >
-                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Manual Payment
+                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Pay With Crypto
                 </Button>
               </div>
             </CardContent>
@@ -416,7 +416,7 @@ export default function BillingPage() {
               })}
               {!settings?.manual_payment_methods?.length && (
                 <p className="py-6 text-center text-sm text-muted-foreground">
-                  No manual payment methods are currently available.
+                  No crypto payment methods are currently available.
                 </p>
               )}
             </div>
@@ -542,7 +542,7 @@ export default function BillingPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {t.credits_added} credits via {t.gateway === 'manual' ? 'Manual Payment' : t.gateway}
+                        {t.credits_added} credits via {t.gateway === 'manual' ? 'Pay With Crypto' : t.gateway}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(t.created_at).toLocaleString()} · ${t.amount_usd.toFixed(2)}

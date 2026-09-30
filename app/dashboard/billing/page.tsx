@@ -332,6 +332,18 @@ export default function BillingPage() {
               <div className="mt-4 space-y-2">
                 <Button
                   size="sm"
+                  className="w-full"
+                  onClick={() => {
+                    setManualPack(pack);
+                    setManualDialogOpen(true);
+                    setManualMethodId(null);
+                    setManualStep('methods');
+                  }}
+                >
+                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Pay with Crypto
+                </Button>
+                <Button
+                  size="sm"
                   variant="outline"
                   className="w-full"
                   disabled={purchasing === pack.id + 'paystack'}
@@ -356,18 +368,6 @@ export default function BillingPage() {
                     {purchasing === pack.id + 'vpay' ? 'Processing…' : 'Pay with Vpay'}
                   </Button>
                 )}
-                <Button
-                  size="sm"
-                  className="w-full"
-                  onClick={() => {
-                    setManualPack(pack);
-                    setManualDialogOpen(true);
-                    setManualMethodId(null);
-                    setManualStep('methods');
-                  }}
-                >
-                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Pay with Crypto
-                </Button>
               </div>
             </CardContent>
           </Card>

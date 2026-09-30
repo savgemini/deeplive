@@ -332,6 +332,7 @@ export default function BillingPage() {
               <div className="mt-4 space-y-2">
                 <Button
                   size="sm"
+                  variant="outline"
                   className="w-full"
                   disabled={purchasing === pack.id + 'paystack'}
                   onClick={() => buyPack(pack, 'paystack')}
@@ -357,7 +358,6 @@ export default function BillingPage() {
                 )}
                 <Button
                   size="sm"
-                  variant="secondary"
                   className="w-full"
                   onClick={() => {
                     setManualPack(pack);
@@ -366,7 +366,7 @@ export default function BillingPage() {
                     setManualStep('methods');
                   }}
                 >
-                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Pay With Crypto
+                  <Banknote className="mr-1.5 h-3.5 w-3.5" /> Pay with Crypto
                 </Button>
               </div>
             </CardContent>
@@ -542,7 +542,7 @@ export default function BillingPage() {
                     </div>
                     <div>
                       <p className="text-sm font-medium">
-                        {t.credits_added} credits via {t.gateway === 'manual' ? 'Pay With Crypto' : t.gateway}
+                        {t.credits_added} credits via {t.gateway === 'manual' ? 'Pay with Crypto' : t.gateway}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {new Date(t.created_at).toLocaleString()} · ${t.amount_usd.toFixed(2)}

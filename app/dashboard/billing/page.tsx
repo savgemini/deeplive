@@ -20,7 +20,7 @@ export default function BillingPage() {
   const [purchasing, setPurchasing] = useState<string | null>(null);
   const [manualPack, setManualPack] = useState<CreditPack | null>(null);
   const [manualDialogOpen, setManualDialogOpen] = useState(false);
-  const [manualStep, setManualStep] = useState<'methods' | 'loading-details' | 'details' | 'complete'>('methods');
+  const [manualStep, setManualStep] = useState<'methods' | 'loading-details' | 'details' | 'proof' | 'complete'>('methods');
   const [manualMethodId, setManualMethodId] = useState<string | null>(null);
   const [manualNote, setManualNote] = useState('');
   const [submittingManual, setSubmittingManual] = useState(false);
@@ -380,7 +380,9 @@ export default function BillingPage() {
             <DialogTitle>
               {manualStep === 'methods' && 'Choose a payment method'}
               {manualStep === 'loading-details' && 'Preparing payment details'}
-              {(manualStep === 'details' || manualStep === 'complete') && 'Complete your transfer'}
+              {manualStep === 'details' && 'Complete your transfer'}
+              {manualStep === 'proof' && 'Upload payment proof'}
+              {manualStep === 'complete' && 'Payment proof submitted'}
             </DialogTitle>
             {manualPack && (
               <p className="text-sm text-muted-foreground">
@@ -429,7 +431,7 @@ export default function BillingPage() {
             </div>
           )}
 
-          {(manualStep === 'details' || manualStep === 'complete') && selectedManualMethod && (
+          {(manualStep === 'details' || manualStep === 'proof' || manualStep === 'complete') && selectedManualMethod && (
             <div className="space-y-4">
               <div className="rounded-md border border-border p-4">
                 <h3 className="font-semibold">{selectedManualMethod.name}</h3>
@@ -464,17 +466,25 @@ export default function BillingPage() {
                     </p>
                   </div>
                 </div>
-              ) : (
+              ) : manualStep === 'proof' ? (
                 <>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Payment note (optional)</label>
-                    <textarea
-                      value={manualNote}
-                      onChange={(event) => setManualNote(event.target.value)}
-                      rows={2}
-                      placeholder="Transfer reference or a note for the admin"
-                      className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
-                    />
+                  <div className="space-y-3 rounded-md border border-border p-4">
+                    <div>
+                      <h3 className="font-semibold">Upload payment proof</h3>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        Select an image or PDF showing your completed transfer.
+                      </p>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Payment note (optional)</label>
+                      <textarea
+                        value={manualNote}
+                        onChange={(event) => setManualNote(event.target.value)}
+                        rows={2}
+                        placeholder="Transfer reference or a note for the admin"
+                        className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+                      />
+                    </div>
                   </div>
                   <input
                     ref={manualProofInputRef}
@@ -494,10 +504,10 @@ export default function BillingPage() {
                       variant="outline"
                       disabled={submittingManual}
                       onClick={() => {
-                        setManualStep('methods');
+                        setManualStep('details');
                       }}
                     >
-                      Back to methods
+                      Back to payment details
                     </Button>
                     <Button
                       type="button"
@@ -507,11 +517,20 @@ export default function BillingPage() {
                       {submittingManual ? (
                         <><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Uploading proof…</>
                       ) : (
-                        <><Upload className="mr-2 h-4 w-4" /> I've made this transfer</>
+                        <><Upload className="mr-2 h-4 w-4" /> Upload proof</>
                       )}
                     </Button>
                   </DialogFooter>
                 </>
+              ) : (
+                <DialogFooter className="gap-2 sm:justify-between">
+                  <Button type="button" variant="outline" onClick={() => setManualStep('methods')}>
+                    Back to methods
+                  </Button>
+                  <Button type="button" onClick={() => setManualStep('proof')}>
+                    I've made this transfer
+                  </Button>
+                </DialogFooter>
               )}
             </div>
           )}

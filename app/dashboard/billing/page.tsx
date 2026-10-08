@@ -31,6 +31,9 @@ export default function BillingPage() {
   const selectedManualMethod = settings?.manual_payment_methods.find(
     (method) => method.id === manualMethodId
   ) ?? null;
+  const visibleTransactions = transactions.filter(
+    (transaction) => transaction.gateway === 'manual' || transaction.status !== 'pending'
+  );
 
   useEffect(() => {
     if (!manualDialogOpen || manualStep !== 'loading-details') return;
@@ -546,11 +549,11 @@ export default function BillingPage() {
       <h2 className="mb-4 mt-10 text-xl font-semibold">Purchase History</h2>
       <Card>
         <CardContent className="pt-6">
-          {transactions.length === 0 ? (
+          {visibleTransactions.length === 0 ? (
             <p className="text-sm text-muted-foreground">No purchases yet.</p>
           ) : (
             <div className="space-y-3">
-              {transactions.map((t) => (
+              {visibleTransactions.map((t) => (
                 <div
                   key={t.id}
                   className="flex flex-col gap-3 rounded-lg border border-border p-4 md:flex-row md:items-center md:justify-between"

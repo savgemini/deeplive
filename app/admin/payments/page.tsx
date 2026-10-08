@@ -46,7 +46,7 @@ export default function AdminPayments() {
   }, []);
 
   const handleDecision = async (transaction: Transaction, decision: 'success' | 'failed') => {
-    if (!transaction.id) return;
+    if (!transaction.id || transaction.gateway !== 'manual' || transaction.status !== 'pending') return;
     setUpdatingId(transaction.id);
 
     try {
@@ -67,7 +67,8 @@ export default function AdminPayments() {
     }
   };
 
-  const filtered = txns.filter((t) => {
+  const visibleTxns = txns.filter((t) => t.gateway === 'manual' || t.status !== 'pending');
+  const filtered = visibleTxns.filter((t) => {
     const matchesSearch =
       t.reference?.toLowerCase().includes(search.toLowerCase()) ||
       t.gateway.toLowerCase().includes(search.toLowerCase()) ||
@@ -80,7 +81,7 @@ export default function AdminPayments() {
     <AdminShell>
       <div className="mb-8">
         <h1 className="text-3xl font-bold tracking-tight">Deposits</h1>
-        <p className="mt-1 text-muted-foreground">All successful and pending deposits across gateways.</p>
+        <p className="mt-1 text-muted-foreground">Crypto deposits awaiting review and completed gateway payments.</p>
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -167,7 +168,7 @@ export default function AdminPayments() {
                       </Badge>
                     </td>
                     <td className="py-3 pr-4">
-                      {t.status === 'pending' && (
+                      {t.status === 'pending' && t.gateway === 'manual' && (
                         <div className="flex gap-2">
                           <Button
                             size="sm"

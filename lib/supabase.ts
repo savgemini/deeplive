@@ -116,6 +116,7 @@ export type SiteSettings = {
   vpay_enabled: boolean;
   manual_payment_methods: ManualPaymentMethod[];
   hero_video_url: string | null;
+  social_preview_image_url: string | null;
   manual_payment_bank_name: string | null;
   manual_payment_account_name: string | null;
   manual_payment_account_number: string | null;

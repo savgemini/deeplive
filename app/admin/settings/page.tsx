@@ -12,13 +12,16 @@ import { toast } from 'sonner';
 import { Plus, Save, Trash2, Upload, X } from 'lucide-react';
 
 const MAX_HERO_VIDEO_SIZE_BYTES = 500 * 1024 * 1024;
+const MAX_SOCIAL_PREVIEW_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
 export default function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [heroVideoFile, setHeroVideoFile] = useState<File | null>(null);
+  const [socialPreviewImageFile, setSocialPreviewImageFile] = useState<File | null>(null);
   const [qrCodeFiles, setQrCodeFiles] = useState<Record<string, File>>({});
   const [heroVideoSettingAvailable, setHeroVideoSettingAvailable] = useState(false);
+  const [socialPreviewSettingAvailable, setSocialPreviewSettingAvailable] = useState(false);
 
   const updateManualMethod = (methodId: string, updates: Partial<ManualPaymentMethod>) => {
     if (!settings) return;
@@ -57,6 +60,7 @@ export default function AdminSettings() {
 
       if (data) {
         setHeroVideoSettingAvailable(Object.prototype.hasOwnProperty.call(data, 'hero_video_url'));
+        setSocialPreviewSettingAvailable(Object.prototype.hasOwnProperty.call(data, 'social_preview_image_url'));
         setSettings(data as SiteSettings);
       }
     };
@@ -71,8 +75,23 @@ export default function AdminSettings() {
 
     try {
       let heroVideoUrl = settings.hero_video_url?.trim() || null;
+      let socialPreviewImageUrl = settings.social_preview_image_url?.trim() || null;
       if (heroVideoFile && !heroVideoSettingAvailable) {
         throw new Error('Apply the homepage hero video Supabase migration before uploading a video.');
+      }
+      if (socialPreviewImageFile && !socialPreviewSettingAvailable) {
+        throw new Error('Apply the social preview image Supabase migration before uploading an image.');
+      }
+      if (socialPreviewImageUrl) {
+        let imageUrl: URL;
+        try {
+          imageUrl = new URL(socialPreviewImageUrl);
+        } catch {
+          throw new Error('Enter a valid HTTPS image URL.');
+        }
+        if (imageUrl.protocol !== 'https:') {
+          throw new Error('The social preview image URL must use HTTPS.');
+        }
       }
       if (heroVideoFile) {
         const extension = heroVideoFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'mp4';
@@ -84,6 +103,18 @@ export default function AdminSettings() {
         if (uploadError) throw uploadError;
         uploadedFiles.push({ bucket: 'site-media', path });
         heroVideoUrl = supabase.storage.from('site-media').getPublicUrl(path).data.publicUrl;
+      }
+
+      if (socialPreviewImageFile) {
+        const extension = socialPreviewImageFile.name.split('.').pop()?.replace(/[^a-zA-Z0-9]/g, '') || 'png';
+        const path = `${crypto.randomUUID()}.${extension}`;
+        const { error: uploadError } = await supabase.storage
+          .from('social-preview-images')
+          .upload(path, socialPreviewImageFile, { contentType: socialPreviewImageFile.type, upsert: false });
+
+        if (uploadError) throw uploadError;
+        uploadedFiles.push({ bucket: 'social-preview-images', path });
+        socialPreviewImageUrl = supabase.storage.from('social-preview-images').getPublicUrl(path).data.publicUrl;
       }
 
       let manualPaymentMethods = settings.manual_payment_methods ?? [];
@@ -129,12 +160,19 @@ export default function AdminSettings() {
       };
 
       if (heroVideoSettingAvailable) payload.hero_video_url = heroVideoUrl;
+      if (socialPreviewSettingAvailable) payload.social_preview_image_url = socialPreviewImageUrl;
 
       const { error } = await supabase.from('settings').upsert(payload, { onConflict: 'id' }).select();
       if (error) throw error;
 
-      setSettings({ ...settings, hero_video_url: heroVideoUrl, manual_payment_methods: manualPaymentMethods });
+      setSettings({
+        ...settings,
+        hero_video_url: heroVideoUrl,
+        social_preview_image_url: socialPreviewImageUrl,
+        manual_payment_methods: manualPaymentMethods,
+      });
       setHeroVideoFile(null);
+      setSocialPreviewImageFile(null);
       setQrCodeFiles({});
       toast.success('Settings saved');
     } catch (error) {
@@ -397,6 +435,76 @@ export default function AdminSettings() {
               <Label className="text-xs">Decart API Key</Label>
               <Input type="password" value={settings.decart_api_key ?? ''} onChange={(e) => setSettings({ ...settings, decart_api_key: e.target.value })} placeholder="decart_…" />
             </div>
+          </CardContent>
+        </Card>
+
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-base">Social Share Preview</CardTitle>
+            <p className="text-sm text-muted-foreground">
+              Choose the image shown when your site link is shared. A 1200 × 630 PNG or JPEG works best.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {!socialPreviewSettingAvailable && (
+              <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-700 dark:text-amber-300">
+                Apply migration 20261008000000 in Supabase SQL Editor to enable social preview images.
+              </p>
+            )}
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/30">
+                <Upload className="h-4 w-4" />
+                <span>{socialPreviewImageFile?.name ?? 'Upload image from this device'}</span>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg"
+                  className="hidden"
+                  disabled={!socialPreviewSettingAvailable}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0] ?? null;
+                    event.target.value = '';
+                    if (!file) return;
+                    if (!['image/png', 'image/jpeg'].includes(file.type)) {
+                      toast.error('Choose a PNG or JPEG image.');
+                      return;
+                    }
+                    if (file.size > MAX_SOCIAL_PREVIEW_IMAGE_SIZE_BYTES) {
+                      toast.error('The social preview image must be smaller than 10 MB.');
+                      return;
+                    }
+                    setSocialPreviewImageFile(file);
+                    setSettings({ ...settings, social_preview_image_url: null });
+                  }}
+                />
+              </label>
+              {socialPreviewImageFile && (
+                <Button type="button" variant="ghost" size="sm" onClick={() => setSocialPreviewImageFile(null)}>
+                  <X className="mr-1.5 h-4 w-4" /> Remove selected image
+                </Button>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Or enter a direct image URL</Label>
+              <Input
+                type="url"
+                value={settings.social_preview_image_url ?? ''}
+                disabled={!socialPreviewSettingAvailable}
+                onChange={(event) => {
+                  setSettings({ ...settings, social_preview_image_url: event.target.value || null });
+                  if (event.target.value) setSocialPreviewImageFile(null);
+                }}
+                placeholder="https://example.com/share-preview.jpg"
+              />
+            </div>
+            {settings.social_preview_image_url && (
+              <div className="max-w-xl overflow-hidden rounded-md border border-border">
+                <img
+                  src={settings.social_preview_image_url}
+                  alt="Current social share preview"
+                  className="aspect-[1200/630] w-full object-cover"
+                />
+              </div>
+            )}
           </CardContent>
         </Card>
 

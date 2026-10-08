@@ -1,14 +1,8 @@
 import { ImageResponse } from 'next/server';
 
 export const runtime = 'edge';
-export const alt = 'DeepLive turns your webcam into a real-time AI avatar';
-export const size = { width: 1200, height: 630 };
-export const contentType = 'image/png';
 
-const heroImage =
-  'https://images.pexels.com/photos/8107821/pexels-photo-8107821.jpeg?auto=compress&cs=tinysrgb&h=650&w=940';
-
-export default function OpenGraphImage() {
+export async function GET() {
   return new ImageResponse(
     (
       <div
@@ -79,13 +73,13 @@ export default function OpenGraphImage() {
           }}
         >
           <img
-            src={heroImage}
+            src="https://images.pexels.com/photos/8107821/pexels-photo-8107821.jpeg?auto=compress&cs=tinysrgb&h=650&w=940"
             alt="AI avatar video preview"
             style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           />
         </div>
       </div>
     ),
-    { ...size }
+    { width: 1200, height: 630 }
   );
 }

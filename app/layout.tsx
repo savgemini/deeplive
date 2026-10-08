@@ -15,7 +15,12 @@ export const metadata: Metadata = {
     title: 'DeepLive — Real-Time AI Avatar Video Calls',
     description:
       'Transform your webcam into a realistic AI avatar in real-time.',
-    images: [{ url: 'https://bolt.new/static/og_default.png' }],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'DeepLive — Real-Time AI Avatar Video Calls',
+    description:
+      'Transform your webcam into a realistic AI avatar in real-time.',
   },
 };
 

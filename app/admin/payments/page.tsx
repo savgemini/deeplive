@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase, Transaction } from '@/lib/supabase';
+import { Transaction } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth-context';
 import { AdminShell } from '@/components/admin-shell';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -11,52 +12,52 @@ import { Search } from 'lucide-react';
 import { toast } from 'sonner';
 
 export default function AdminPayments() {
+  const { session } = useAuth();
   const [txns, setTxns] = useState<(Transaction & { user_email: string | null })[]>([]);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'success' | 'failed' | 'pending'>('all');
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   const loadTxns = async () => {
-    const { data, error } = await supabase
-      .from('transactions')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    if (error) {
-      toast.error('Unable to load payments.');
+    if (!session?.access_token) return;
+
+    const response = await fetch('/api/admin/payments', {
+      headers: { Authorization: `Bearer ${session.access_token}` },
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      toast.error(data.error || 'Unable to load payments.');
       return;
     }
 
-    const transactions = (data as Transaction[]) ?? [];
-    const userIds = Array.from(new Set(transactions.map((transaction) => transaction.user_id)));
-    const { data: profiles, error: profilesError } = userIds.length
-      ? await supabase.from('profiles').select('id, email').in('id', userIds)
-      : { data: [], error: null };
-
-    if (profilesError) toast.error('Unable to load payment user emails.');
-    const emails = new Map((profiles ?? []).map((profile) => [profile.id, profile.email]));
-    setTxns(transactions.map((transaction) => ({
-      ...transaction,
-      user_email: emails.get(transaction.user_id) ?? null,
-    })));
+    setTxns(data.transactions as (Transaction & { user_email: string | null })[]);
   };
 
   useEffect(() => {
-    loadTxns();
-  }, []);
+    if (session) void loadTxns();
+  }, [session]);
 
   const handleDecision = async (transaction: Transaction, decision: 'success' | 'failed') => {
     if (!transaction.id || transaction.gateway !== 'manual' || transaction.status !== 'pending') return;
     setUpdatingId(transaction.id);
 
     try {
-      const { error } = await supabase
-        .from('transactions')
-        .update({ status: decision })
-        .eq('id', transaction.id);
+      if (!session?.access_token) {
+        toast.error('Authentication required.');
+        return;
+      }
 
-      if (error) {
-        toast.error('Could not update payment status.');
+      const response = await fetch('/api/admin/payments', {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ transactionId: transaction.id, decision }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        toast.error(data.error || 'Could not update payment status.');
         return;
       }
 

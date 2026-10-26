@@ -7,7 +7,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Clock } from 'lucide-react';
 import { toast } from 'sonner';
-import { formatSessionDuration, getBillableMinutes } from '@/lib/session-usage';
+import { formatSessionDuration, getMinutesUsed } from '@/lib/session-usage';
 
 export default function AdminSessions() {
   const [sessions, setSessions] = useState<(SessionLog & { user_email: string | null })[]>([]);
@@ -63,7 +63,7 @@ export default function AdminSessions() {
                   <tr className="border-b border-border text-left text-muted-foreground">
                     <th className="pb-3 pr-4 font-medium">User Email</th>
                     <th className="pb-3 pr-4 font-medium">Duration</th>
-                    <th className="pb-3 pr-4 font-medium">Billable Minutes</th>
+                    <th className="pb-3 pr-4 font-medium">Minutes Used</th>
                     <th className="pb-3 pr-4 font-medium">Credits Used</th>
                     <th className="pb-3 pr-4 font-medium">Quality</th>
                     <th className="pb-3 pr-4 font-medium">Watermark</th>
@@ -78,7 +78,7 @@ export default function AdminSessions() {
                         {formatSessionDuration(s.duration_seconds)}
                       </td>
                       <td className="py-3 pr-4">
-                        {getBillableMinutes(s.duration_seconds)}
+                        {getMinutesUsed(s.duration_seconds).toFixed(2)}
                       </td>
                       <td className="py-3 pr-4 font-medium text-primary">
                         -{s.credits_used}

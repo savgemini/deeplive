@@ -47,7 +47,7 @@ export default function AdminOverview() {
         totalUsers: users?.length ?? 0,
         totalRevenue: successful.reduce((a, t) => a + Number(t.amount_usd), 0),
         totalCreditsSold: successful.reduce((a, t) => a + (t.credits_added ?? 0), 0),
-        totalMinutesUsed: (sessions ?? []).reduce((a, s) => a + Math.floor(s.duration_seconds / 60), 0),
+        totalMinutesUsed: (sessions ?? []).reduce((a, s) => a + s.duration_seconds / 60, 0),
         activeToday: 0,
         revenueToday: successful
           .filter((t) => new Date(t.created_at).getTime() >= todayStart)
@@ -94,7 +94,7 @@ export default function AdminOverview() {
     { label: 'Revenue Today', value: `$${stats.revenueToday.toFixed(2)}`, icon: DollarSign },
     { label: 'Revenue This Month', value: `$${stats.revenueMonth.toFixed(2)}`, icon: DollarSign },
     { label: 'Credits Sold', value: stats.totalCreditsSold, icon: Zap },
-    { label: 'Minutes Used', value: stats.totalMinutesUsed, icon: Clock },
+    { label: 'Minutes Used', value: stats.totalMinutesUsed.toFixed(2), icon: Clock },
     { label: 'Total Revenue', value: `$${stats.totalRevenue.toFixed(2)}`, icon: DollarSign },
   ];
 

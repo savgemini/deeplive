@@ -72,7 +72,7 @@ export default function DashboardHome() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {Math.floor((profile?.credits_balance ?? 0) / 125)}
+              {((profile?.credits_balance ?? 0) / 125).toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">approx. minutes</p>
           </CardContent>
@@ -98,7 +98,7 @@ export default function DashboardHome() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {Math.floor(totalMinutesUsed / 60)}
+              {(totalMinutesUsed / 60).toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">total minutes</p>
           </CardContent>

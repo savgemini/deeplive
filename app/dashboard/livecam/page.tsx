@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/lib/auth-context';
 import { supabase } from '@/lib/supabase';
-import { CREDITS_PER_MINUTE, formatSessionDuration, getBillableMinutes } from '@/lib/session-usage';
+import { CREDITS_PER_MINUTE, formatSessionDuration, getCreditsForDuration, getMinutesUsed } from '@/lib/session-usage';
 import { DashboardShell } from '@/components/dashboard-shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -48,7 +48,6 @@ type ActiveSession = {
   id: string;
   startedAt: number;
   chargedCredits: number;
-  chargedMinutes: number;
   stopping: boolean;
   chargePromise: Promise<{ chargedCredits: number; balanceAfter: number } | null> | null;
 };
@@ -244,7 +243,6 @@ export default function LiveCamPage() {
           id: data.id,
           startedAt: Date.now(),
           chargedCredits: 0,
-          chargedMinutes: 0,
           stopping: false,
           chargePromise: null,
         };
@@ -283,8 +281,8 @@ export default function LiveCamPage() {
 
     if (session && profile) {
       const durationSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
-      const minutesUsed = getBillableMinutes(durationSeconds);
-      const targetCredits = minutesUsed * CREDITS_PER_MINUTE;
+      const minutesUsed = getMinutesUsed(durationSeconds);
+      const targetCredits = getCreditsForDuration(durationSeconds);
 
       while (session.chargePromise) await session.chargePromise;
       const finalCharge = await chargeSessionCredits(session, targetCredits);
@@ -390,16 +388,16 @@ export default function LiveCamPage() {
 
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
       setElapsed(elapsedSeconds);
-      const completedMinutes = Math.floor(elapsedSeconds / 60);
-      if (completedMinutes <= session.chargedMinutes || session.chargePromise) return;
+      const targetCredits = getCreditsForDuration(elapsedSeconds);
+      const minimumCharge = Math.ceil(CREDITS_PER_MINUTE / 6);
+      if (targetCredits - session.chargedCredits < minimumCharge || session.chargePromise) return;
 
-      const charge = await chargeSessionCredits(session, completedMinutes * CREDITS_PER_MINUTE);
+      const charge = await chargeSessionCredits(session, targetCredits);
       if (!charge) {
         await stopSession();
         return;
       }
 
-      session.chargedMinutes = completedMinutes;
       if (charge.balanceAfter <= 0) await stopSession();
     }, 1000);
     return () => clearInterval(interval);
@@ -506,8 +504,8 @@ export default function LiveCamPage() {
               <p className="mt-2 text-3xl font-semibold">{sessionSummary.creditsUsed}</p>
             </div>
             <div className="rounded-xl border border-border bg-background p-4">
-              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Billable Minutes</p>
-              <p className="mt-2 text-3xl font-semibold">{sessionSummary.minutesUsed}</p>
+              <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Minutes Used</p>
+              <p className="mt-2 text-3xl font-semibold">{sessionSummary.minutesUsed.toFixed(2)}</p>
             </div>
             <div className="rounded-xl border border-border bg-background p-4">
               <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Credit Balance After</p>

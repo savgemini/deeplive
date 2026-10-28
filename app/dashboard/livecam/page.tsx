@@ -48,6 +48,7 @@ type ActiveSession = {
   id: string;
   startedAt: number;
   chargedCredits: number;
+  trialSeconds: number;
   stopping: boolean;
   chargePromise: Promise<{ chargedCredits: number; balanceAfter: number } | null> | null;
 };
@@ -142,10 +143,30 @@ export default function LiveCamPage() {
       toast.error('Enter an AI prompt before starting the session.');
       return;
     }
-    if (profile.credits_balance <= 0) {
-      toast.error('You have no credits. Buy a pack to continue.');
+    const needsFreeTrial = profile.credits_balance <= 0;
+    if (needsFreeTrial && profile.free_trial_used) {
+      toast.error('Your free trial has been used. Buy credits to continue.');
       router.push('/dashboard/billing');
       return;
+    }
+
+    if (needsFreeTrial) {
+      const { data: settings, error } = await supabase
+        .from('settings_public')
+        .select('free_trial_seconds')
+        .eq('id', 1)
+        .maybeSingle();
+
+      if (error) {
+        toast.error('Unable to check free trial availability.');
+        return;
+      }
+
+      if (!settings || settings.free_trial_seconds <= 0) {
+        toast.error('Free trials are currently unavailable. Buy credits to continue.');
+        router.push('/dashboard/billing');
+        return;
+      }
     }
     if (!cameraOn || !streamRef.current) {
       await startCamera();
@@ -226,7 +247,18 @@ export default function LiveCamPage() {
         setConnState('error');
       });
 
-      const { data } = await supabase
+      let trialSeconds = 0;
+      if (needsFreeTrial) {
+        const { data, error } = await supabase.rpc('claim_free_trial');
+        if (error) throw new Error(`Unable to start free trial: ${error.message}`);
+        if (typeof data !== 'number' || data <= 0) {
+          throw new Error('Your free trial is unavailable or has already been used.');
+        }
+        trialSeconds = data;
+        refreshProfile();
+      }
+
+      const { data, error: insertError } = await supabase
         .from('sessions')
         .insert({
           user_id: profile.id,
@@ -238,20 +270,30 @@ export default function LiveCamPage() {
         .select()
         .single();
 
-      if (data) {
-        sessionRef.current = {
-          id: data.id,
-          startedAt: Date.now(),
-          chargedCredits: 0,
-          stopping: false,
-          chargePromise: null,
-        };
-      }
+      if (insertError) throw insertError;
+      if (!data) throw new Error('Unable to record the session.');
+
+      sessionRef.current = {
+        id: data.id,
+        startedAt: Date.now(),
+        chargedCredits: 0,
+        trialSeconds,
+        stopping: false,
+        chargePromise: null,
+      };
       setElapsed(0);
       setActive(true);
       setConnState('connected');
-      toast.success('LiveCam session started');
+      toast.success(
+        trialSeconds > 0
+          ? `Free trial started (${trialSeconds} seconds)`
+          : 'LiveCam session started'
+      );
     } catch (err) {
+      if (realtimeClientRef.current) {
+        realtimeClientRef.current.disconnect();
+        realtimeClientRef.current = null;
+      }
       toast.error(err instanceof Error ? err.message : 'Failed to start AI session');
       setConnState('error');
     } finally {
@@ -388,6 +430,11 @@ export default function LiveCamPage() {
 
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
       setElapsed(elapsedSeconds);
+      if (session.trialSeconds > 0) {
+        if (elapsedSeconds >= session.trialSeconds) await stopSession();
+        return;
+      }
+
       const targetCredits = getCreditsForDuration(elapsedSeconds);
       const minimumCharge = Math.ceil(CREDITS_PER_MINUTE / 6);
       if (targetCredits - session.chargedCredits < minimumCharge || session.chargePromise) return;

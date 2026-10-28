@@ -41,6 +41,7 @@ export type Profile = {
   avatar_url: string | null;
   role: 'user' | 'admin';
   credits_balance: number;
+  free_trial_used: boolean;
   banned: boolean;
   referral_code: string | null;
   referred_by: string | null;

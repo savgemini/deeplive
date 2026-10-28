@@ -84,6 +84,10 @@ export default function AdminSettings() {
     const uploadedFiles: { bucket: string; path: string }[] = [];
 
     try {
+      if (!Number.isInteger(settings.free_trial_seconds) || settings.free_trial_seconds < 0) {
+        throw new Error('Free trial duration must be a non-negative whole number of seconds.');
+      }
+
       let heroVideoUrl = settings.hero_video_url?.trim() || null;
       let socialPreviewImageUrl = settings.social_preview_image_url?.trim() || null;
       if (heroVideoFile && !heroVideoSettingAvailable) {
@@ -240,7 +244,7 @@ export default function AdminSettings() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Free Trial Duration (seconds)</Label>
-              <Input type="number" value={settings.free_trial_seconds} onChange={(e) => setSettings({ ...settings, free_trial_seconds: Number(e.target.value) })} />
+              <Input type="number" min={0} step={1} value={settings.free_trial_seconds} onChange={(e) => setSettings({ ...settings, free_trial_seconds: Number(e.target.value) })} />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs">Watermark Text</Label>

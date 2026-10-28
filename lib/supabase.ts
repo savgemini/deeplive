@@ -124,5 +124,6 @@ export type SiteSettings = {
   manual_payment_wallet_number: string | null;
   manual_payment_instructions: string | null;
   decart_api_key: string | null;
+  decart_api_keys: string[] | null;
   updated_at: string;
 };

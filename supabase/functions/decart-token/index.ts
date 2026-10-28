@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Read the Decart API key from the settings table using the service role key
-    const settingsResponse = await fetch(`${supabaseUrl}/rest/v1/settings?select=decart_api_key&limit=1`, {
+    const settingsResponse = await fetch(`${supabaseUrl}/rest/v1/settings?select=decart_api_key,decart_api_keys&limit=1`, {
       headers: {
         "Authorization": `Bearer ${serviceRoleKey}`,
         "apikey": serviceRoleKey,
@@ -37,10 +37,20 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const settingsData = await settingsResponse.json() as Array<{ decart_api_key: string | null }>;
-    const apiKey = settingsData[0]?.decart_api_key;
+    const settingsData = await settingsResponse.json() as Array<{ decart_api_key?: string | null; decart_api_keys?: string[] | null }>;
+    const apiKeys = Array.from(
+      new Set(
+        [
+          ...(Array.isArray(settingsData[0]?.decart_api_keys) ? settingsData[0].decart_api_keys : []),
+          settingsData[0]?.decart_api_key,
+        ]
+          .filter((key): key is string => typeof key === "string")
+          .map((key) => key.trim())
+          .filter(Boolean)
+      )
+    );
 
-    if (!apiKey) {
+    if (apiKeys.length === 0) {
       return new Response(
         JSON.stringify({ error: "Decart API key not configured in settings" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -51,32 +61,69 @@ Deno.serve(async (req: Request) => {
     const expiresIn = Math.min(Math.max(body.expiresIn ?? 3600, 1), 3600);
     const allowedModels = body.allowedModels ?? ["lucy-2.1"];
 
-    // Mint a short-lived client token from Decart
-    // Decart API uses X-API-KEY header, not Authorization: Bearer
-    const tokenResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-API-KEY": apiKey,
-      },
-      body: JSON.stringify({
-        expiresIn,
-        allowedModels,
-      }),
-    });
+    let lastError: { status: number; error: string; details?: unknown } | null = null;
 
-    if (!tokenResponse.ok) {
+    for (const apiKey of apiKeys) {
+      const tokenResponse = await fetch("https://api.decart.ai/v1/client/tokens", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-API-KEY": apiKey,
+        },
+        body: JSON.stringify({
+          expiresIn,
+          allowedModels,
+        }),
+      });
+
+      if (tokenResponse.ok) {
+        const tokenData = await tokenResponse.json();
+        return new Response(
+          JSON.stringify(tokenData),
+          { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+
       const errorText = await tokenResponse.text();
+      let parsedError: unknown = null;
+      try {
+        parsedError = JSON.parse(errorText);
+      } catch {
+        parsedError = null;
+      }
+
+      const message =
+        (typeof parsedError === "object" && parsedError !== null && "error" in parsedError && typeof (parsedError as { error?: unknown }).error === "string"
+          ? (parsedError as { error: string }).error
+          : (typeof parsedError === "object" && parsedError !== null && "message" in parsedError && typeof (parsedError as { message?: unknown }).message === "string"
+            ? (parsedError as { message: string }).message
+            : errorText || `Decart API error: ${tokenResponse.status}`));
+
+      lastError = {
+        status: tokenResponse.status,
+        error: message,
+        details: parsedError ?? errorText,
+      };
+
+      const lowerError = message.toLowerCase();
+      const isKeyExhausted = /insufficient|credit|quota|limit|balance/.test(lowerError);
+      const isKeyInvalid = /invalid.*key|unauthorized|forbidden|not allowed|bad api/.test(lowerError);
+
+      if (!isKeyExhausted && !isKeyInvalid) {
+        break;
+      }
+    }
+
+    if (lastError) {
       return new Response(
-        JSON.stringify({ error: `Decart API error: ${tokenResponse.status}`, details: errorText }),
-        { status: tokenResponse.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        JSON.stringify({ error: `Decart API error: ${lastError.status}`, details: lastError.error }),
+        { status: lastError.status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    const tokenData = await tokenResponse.json();
     return new Response(
-      JSON.stringify(tokenData),
-      { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      JSON.stringify({ error: "Decart API key not configured in settings" }),
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (err) {
     return new Response(

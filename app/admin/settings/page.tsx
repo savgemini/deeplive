@@ -14,6 +14,16 @@ import { Plus, Save, Trash2, Upload, X } from 'lucide-react';
 const MAX_HERO_VIDEO_SIZE_BYTES = 500 * 1024 * 1024;
 const MAX_SOCIAL_PREVIEW_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 
+const parseDecartKeys = (value: string) =>
+  Array.from(
+    new Set(
+      value
+        .split(/\r?\n|,/)
+        .map((key) => key.trim())
+        .filter(Boolean)
+    )
+  );
+
 export default function AdminSettings() {
   const [settings, setSettings] = useState<SiteSettings | null>(null);
   const [saving, setSaving] = useState(false);
@@ -136,6 +146,9 @@ export default function AdminSettings() {
         );
       }
 
+      const decartKeys = parseDecartKeys(
+        (settings.decart_api_keys ?? []).join('\n') || (settings.decart_api_key ?? '')
+      );
       const payload: Record<string, unknown> = {
         id: 1,
         site_name: settings.site_name,
@@ -155,7 +168,8 @@ export default function AdminSettings() {
         manual_payment_wallet_name: settings.manual_payment_wallet_name,
         manual_payment_wallet_number: settings.manual_payment_wallet_number,
         manual_payment_instructions: settings.manual_payment_instructions,
-        decart_api_key: settings.decart_api_key,
+        decart_api_key: decartKeys[0] ?? null,
+        decart_api_keys: decartKeys,
         updated_at: new Date().toISOString(),
       };
 
@@ -432,8 +446,21 @@ export default function AdminSettings() {
               ))}
             </div>
             <div className="space-y-1.5">
-              <Label className="text-xs">Decart API Key</Label>
-              <Input type="password" value={settings.decart_api_key ?? ''} onChange={(e) => setSettings({ ...settings, decart_api_key: e.target.value })} placeholder="decart_…" />
+              <Label className="text-xs">Decart API Keys</Label>
+              <textarea
+                value={((settings.decart_api_keys ?? []).join('\n') || settings.decart_api_key || '')}
+                onChange={(e) => {
+                  const keys = parseDecartKeys(e.target.value);
+                  setSettings({
+                    ...settings,
+                    decart_api_key: keys[0] ?? null,
+                    decart_api_keys: keys,
+                  });
+                }}
+                placeholder={'decart_key_1\ndecart_key_2\ndecart_key_3'}
+                className="min-h-[88px] w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-sm outline-none ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              />
+              <p className="text-xs text-muted-foreground">One key per line. The app will try the next key automatically if the active key runs out of credits.</p>
             </div>
           </CardContent>
         </Card>

@@ -88,6 +88,10 @@ export default function LiveCamPage() {
   const [uploadingImage, setUploadingImage] = useState(false);
   const [sessionSummaryOpen, setSessionSummaryOpen] = useState(false);
   const [sessionSummary, setSessionSummary] = useState({ durationSeconds: 0, creditsUsed: 0, minutesUsed: 0, balanceAfter: 0 });
+  const watermarkEnforced = trialSessionActive || (profile?.credits_balance ?? 0) <= 0;
+  const watermarkMessage = trialSessionActive
+    ? 'Required during your free trial. Buy credits to turn it off.'
+    : 'Required while your credit balance is zero. Buy credits to turn it off.';
 
   useEffect(() => {
     navigator.mediaDevices?.enumerateDevices()
@@ -728,7 +732,7 @@ export default function LiveCamPage() {
                       <span className="text-xs font-semibold text-white">REC</span>
                     </div>
                   )}
-                  {(watermark || trialSessionActive) && active && (
+                  {(watermark || watermarkEnforced) && active && (
                     <div className="absolute bottom-3 right-3 text-sm font-bold text-white/50">
                       DeepLive
                     </div>
@@ -925,15 +929,15 @@ export default function LiveCamPage() {
                 <div>
                   <Label className="text-sm">Watermark</Label>
                   <p className="text-xs text-muted-foreground">
-                    {trialSessionActive
-                      ? 'Watermark is required during a free trial'
+                    {watermarkEnforced
+                      ? watermarkMessage
                       : 'Show DeepLive watermark on output'}
                   </p>
                 </div>
                 <Switch
-                  checked={watermark || trialSessionActive}
+                  checked={watermark || watermarkEnforced}
                   onCheckedChange={setWatermark}
-                  disabled={trialSessionActive}
+                  disabled={watermarkEnforced}
                 />
               </div>
               <div className="flex items-center justify-between">

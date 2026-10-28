@@ -589,27 +589,45 @@ export default function LiveCamPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col gap-5 rounded-2xl border border-border bg-card/60 p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">LiveCam Workspace</h1>
           <p className="mt-1 text-muted-foreground">
             Transform your webcam in real-time with AI.
           </p>
         </div>
-        <div className="flex items-center gap-3">
-          <Badge variant="outline" className="gap-2">
-            <span className={`h-2 w-2 rounded-full ${connStateColor[connState]} ${connState === 'connecting' || connState === 'reconnecting' ? 'animate-pulse' : ''}`} />
-            {connStateLabel[connState]}
-          </Badge>
-          <Badge variant="outline" className="gap-2">
-            <Clock className="h-3.5 w-3.5" />
-            {formatTime(elapsed)}
-          </Badge>
-          {trialSessionActive && (
-            <Badge variant="secondary" className="gap-2">
-              Free trial: {formatTime(trialRemainingSeconds)} left
+        <div className="grid grid-cols-2 gap-3 sm:flex sm:items-stretch">
+          <div className="min-w-[128px] rounded-xl border border-border bg-background/70 px-4 py-2.5">
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">Session time</p>
+            <p className="mt-1 font-mono text-xl font-semibold tabular-nums">{formatTime(elapsed)}</p>
+          </div>
+          <div className={`min-w-[145px] rounded-xl border px-4 py-2.5 ${trialSessionActive ? 'border-primary/40 bg-primary/5' : 'border-border bg-background/70'}`}>
+            <p className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground">
+              {trialSessionActive ? 'Trial remaining' : 'Free trial'}
+            </p>
+            <p className="mt-1 font-mono text-xl font-semibold tabular-nums">
+              {trialSessionActive
+                ? formatTime(trialRemainingSeconds)
+                : profile?.free_trial_used
+                  ? 'Used'
+                  : freeTrialDuration > 0
+                    ? formatTime(freeTrialDuration)
+                    : 'Unavailable'}
+            </p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              {trialSessionActive
+                ? 'Time left in this session'
+                : profile?.free_trial_used
+                  ? 'One-time trial already claimed'
+                  : 'Available for one session'}
+            </p>
+          </div>
+          <div className="col-span-2 flex items-center justify-center rounded-xl border border-border bg-background/70 px-4 py-2.5 sm:col-span-1 sm:justify-start">
+            <Badge variant="outline" className="gap-2 border-0 bg-transparent px-0">
+              <span className={`h-2 w-2 rounded-full ${connStateColor[connState]} ${connState === 'connecting' || connState === 'reconnecting' ? 'animate-pulse' : ''}`} />
+              {connStateLabel[connState]}
             </Badge>
-          )}
+          </div>
         </div>
       </div>
 
@@ -958,18 +976,6 @@ export default function LiveCamPage() {
                 <span className="text-sm text-muted-foreground">Approx. minutes</span>
                 <span className="text-sm font-medium">
                   {Math.floor((profile?.credits_balance ?? 0) / 125)}
-                </span>
-              </div>
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Free trial</span>
-                <span className="text-sm font-medium">
-                  {trialSessionActive
-                    ? `${formatTime(trialRemainingSeconds)} left`
-                    : profile?.free_trial_used
-                      ? 'Used'
-                      : freeTrialDuration > 0
-                        ? `${formatTime(freeTrialDuration)} available`
-                        : 'Unavailable'}
                 </span>
               </div>
             </CardContent>

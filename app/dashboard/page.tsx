@@ -14,6 +14,7 @@ export default function DashboardHome() {
   const { profile } = useAuth();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [sessions, setSessions] = useState<SessionLog[]>([]);
+  const [freeTrialSeconds, setFreeTrialSeconds] = useState(0);
 
   useEffect(() => {
     if (!profile) return;
@@ -31,6 +32,18 @@ export default function DashboardHome() {
       .order('started_at', { ascending: false })
       .limit(5)
       .then(({ data }) => setSessions((data as SessionLog[]) ?? []));
+    supabase
+      .from('settings_public')
+      .select('free_trial_seconds')
+      .eq('id', 1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Unable to load free trial duration:', error);
+          return;
+        }
+        setFreeTrialSeconds(Math.max(0, data?.free_trial_seconds ?? 0));
+      });
   }, [profile]);
 
   const totalMinutesUsed = sessions.reduce(
@@ -50,7 +63,7 @@ export default function DashboardHome() {
       </div>
 
       {/* Stat cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -101,6 +114,30 @@ export default function DashboardHome() {
               {(totalMinutesUsed / 60).toFixed(2)}
             </div>
             <p className="text-xs text-muted-foreground">total minutes</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Free Trial
+            </CardTitle>
+            <Clock className="h-4 w-4 text-primary" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">
+              {profile?.free_trial_used
+                ? 'Used'
+                : freeTrialSeconds > 0
+                  ? `${Math.floor(freeTrialSeconds / 60)}:${String(freeTrialSeconds % 60).padStart(2, '0')}`
+                  : 'Unavailable'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {profile?.free_trial_used
+                ? 'Your one-time trial has ended'
+                : freeTrialSeconds > 0
+                  ? 'minutes:seconds available'
+                  : 'No free trial configured'}
+            </p>
           </CardContent>
         </Card>
       </div>

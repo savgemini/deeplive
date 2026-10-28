@@ -74,6 +74,9 @@ export default function LiveCamPage() {
   const [loadingCamera, setLoadingCamera] = useState(false);
   const [active, setActive] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  const [trialSessionActive, setTrialSessionActive] = useState(false);
+  const [trialRemainingSeconds, setTrialRemainingSeconds] = useState(0);
+  const [freeTrialDuration, setFreeTrialDuration] = useState(0);
   const [watermark, setWatermark] = useState(true);
   const [selectedPreset, setSelectedPreset] = useState('default');
   const [customPrompt, setCustomPrompt] = useState(PRESETS[0].prompt);
@@ -94,6 +97,21 @@ export default function LiveCamPage() {
         if (cams[0]) setSelectedCamera(cams[0].deviceId);
       })
       .catch(() => {});
+  }, []);
+
+  useEffect(() => {
+    supabase
+      .from('settings_public')
+      .select('free_trial_seconds')
+      .eq('id', 1)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (error) {
+          console.error('Unable to load free trial duration:', error);
+          return;
+        }
+        setFreeTrialDuration(Math.max(0, data?.free_trial_seconds ?? 0));
+      });
   }, []);
 
   const startCamera = useCallback(async () => {
@@ -167,6 +185,7 @@ export default function LiveCamPage() {
         router.push('/dashboard/billing');
         return;
       }
+      setFreeTrialDuration(settings.free_trial_seconds);
     }
     if (!cameraOn || !streamRef.current) {
       await startCamera();
@@ -263,7 +282,7 @@ export default function LiveCamPage() {
         .insert({
           user_id: profile.id,
           quality: 'HD',
-          watermark,
+          watermark: needsFreeTrial || watermark,
           avatar_name: selectedPreset,
           started_at: new Date().toISOString(),
         })
@@ -281,6 +300,8 @@ export default function LiveCamPage() {
         stopping: false,
         chargePromise: null,
       };
+      setTrialSessionActive(trialSeconds > 0);
+      setTrialRemainingSeconds(trialSeconds);
       setElapsed(0);
       setActive(true);
       setConnState('connected');
@@ -306,6 +327,8 @@ export default function LiveCamPage() {
     if (session?.stopping) return;
     if (session) session.stopping = true;
     setActive(false);
+    setTrialSessionActive(false);
+    setTrialRemainingSeconds(0);
     setConnState('disconnected');
 
     if (realtimeClientRef.current) {
@@ -324,7 +347,7 @@ export default function LiveCamPage() {
     if (session && profile) {
       const durationSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
       const minutesUsed = getMinutesUsed(durationSeconds);
-      const targetCredits = getCreditsForDuration(durationSeconds);
+      const targetCredits = session.trialSeconds > 0 ? 0 : getCreditsForDuration(durationSeconds);
 
       while (session.chargePromise) await session.chargePromise;
       const finalCharge = await chargeSessionCredits(session, targetCredits);
@@ -431,7 +454,9 @@ export default function LiveCamPage() {
       const elapsedSeconds = Math.max(0, Math.floor((Date.now() - session.startedAt) / 1000));
       setElapsed(elapsedSeconds);
       if (session.trialSeconds > 0) {
-        if (elapsedSeconds >= session.trialSeconds) await stopSession();
+        const remainingSeconds = Math.max(0, session.trialSeconds - elapsedSeconds);
+        setTrialRemainingSeconds(remainingSeconds);
+        if (remainingSeconds === 0) await stopSession();
         return;
       }
 
@@ -580,6 +605,11 @@ export default function LiveCamPage() {
             <Clock className="h-3.5 w-3.5" />
             {formatTime(elapsed)}
           </Badge>
+          {trialSessionActive && (
+            <Badge variant="secondary" className="gap-2">
+              Free trial: {formatTime(trialRemainingSeconds)} left
+            </Badge>
+          )}
         </div>
       </div>
 
@@ -680,7 +710,7 @@ export default function LiveCamPage() {
                       <span className="text-xs font-semibold text-white">REC</span>
                     </div>
                   )}
-                  {watermark && active && (
+                  {(watermark || trialSessionActive) && active && (
                     <div className="absolute bottom-3 right-3 text-sm font-bold text-white/50">
                       DeepLive
                     </div>
@@ -877,10 +907,16 @@ export default function LiveCamPage() {
                 <div>
                   <Label className="text-sm">Watermark</Label>
                   <p className="text-xs text-muted-foreground">
-                    Show DeepLive watermark on output
+                    {trialSessionActive
+                      ? 'Watermark is required during a free trial'
+                      : 'Show DeepLive watermark on output'}
                   </p>
                 </div>
-                <Switch checked={watermark} onCheckedChange={setWatermark} />
+                <Switch
+                  checked={watermark || trialSessionActive}
+                  onCheckedChange={setWatermark}
+                  disabled={trialSessionActive}
+                />
               </div>
               <div className="flex items-center justify-between">
                 <div>
@@ -922,6 +958,18 @@ export default function LiveCamPage() {
                 <span className="text-sm text-muted-foreground">Approx. minutes</span>
                 <span className="text-sm font-medium">
                   {Math.floor((profile?.credits_balance ?? 0) / 125)}
+                </span>
+              </div>
+              <div className="mt-2 flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Free trial</span>
+                <span className="text-sm font-medium">
+                  {trialSessionActive
+                    ? `${formatTime(trialRemainingSeconds)} left`
+                    : profile?.free_trial_used
+                      ? 'Used'
+                      : freeTrialDuration > 0
+                        ? `${formatTime(freeTrialDuration)} available`
+                        : 'Unavailable'}
                 </span>
               </div>
             </CardContent>
